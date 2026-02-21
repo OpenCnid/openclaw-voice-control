@@ -37,9 +37,17 @@ class VoiceActivityDetector:
             return True  # Assume speech if no VAD
         try:
             import torch
+            # Silero VAD requires exactly 512 samples at 16kHz (or 256 at 8kHz)
+            chunk_size = 512 if sample_rate == 16000 else 256
             audio_tensor = torch.from_numpy(audio).float()
-            speech_prob = self.model(audio_tensor, sample_rate).item()
-            return speech_prob > self.threshold
+
+            # Process in chunk_size windows, speech if any window triggers
+            for i in range(0, len(audio_tensor) - chunk_size + 1, chunk_size):
+                window = audio_tensor[i:i + chunk_size]
+                speech_prob = self.model(window, sample_rate).item()
+                if speech_prob > self.threshold:
+                    return True
+            return False
         except Exception as e:
             logger.error(f"VAD error: {e}")
             return True

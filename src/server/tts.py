@@ -116,10 +116,11 @@ class ChatterboxTTS:
                     voice_id=self.voice_id,
                     text=text,
                     model_id="eleven_turbo_v2_5",
-                    output_format="pcm_24000",
+                    output_format="mp3_44100_128",
                 )
-                for chunk in audio_generator:
-                    yield chunk
+                # Collect full sentence as MP3 (browser decodes natively)
+                audio_bytes = b"".join(audio_generator)
+                yield audio_bytes
             except Exception as e:
                 logger.error(f"ElevenLabs streaming error: {e}")
         else:

@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     # TTS
     tts_model: str = "chatterbox"
     tts_voice: Optional[str] = None  # Path to voice sample for cloning
+    elevenlabs_api_key: Optional[str] = None
     
     # AI Backend
     backend_type: str = "openai"  # openai, openclaw, custom
@@ -57,8 +58,8 @@ class Settings(BaseSettings):
     openai_api_key: Optional[str] = None
     
     # OpenClaw Gateway (auto-detected from OPENCLAW_GATEWAY_URL + TOKEN)
-    openclaw_gateway_url: Optional[str] = None
-    openclaw_gateway_token: Optional[str] = None
+    gateway_url: Optional[str] = None
+    gateway_token: Optional[str] = None
     
     # Audio
     sample_rate: int = 16000
@@ -107,8 +108,8 @@ async def startup():
     
     # Initialize AI backend
     # Auto-detect OpenClaw gateway
-    gateway_url = settings.openclaw_gateway_url or os.getenv("OPENCLAW_GATEWAY_URL")
-    gateway_token = settings.openclaw_gateway_token or os.getenv("OPENCLAW_GATEWAY_TOKEN")
+    gateway_url = settings.gateway_url or os.getenv("OPENCLAW_GATEWAY_URL")
+    gateway_token = settings.gateway_token or os.getenv("OPENCLAW_GATEWAY_TOKEN")
     
     if gateway_url and gateway_token:
         # Use OpenClaw gateway (connects to Aria!)
@@ -320,7 +321,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                                 await websocket.send_json({
                                                     "type": "audio_chunk",
                                                     "data": audio_b64,
-                                                    "sample_rate": 24000,
+                                                    "format": "mp3",
                                                 })
                                 else:
                                     break
@@ -334,7 +335,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                     await websocket.send_json({
                                         "type": "audio_chunk",
                                         "data": audio_b64,
-                                        "sample_rate": 24000,
+                                        "format": "mp3",
                                     })
                         
                         # Signal end of response
