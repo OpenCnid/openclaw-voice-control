@@ -315,9 +315,9 @@
         let continuousMode = false;
         let silenceTimer = null;
         let silenceThreshold = 2000; // ms of silence before stopping
-        let speechDetectedInSession = false; // Track if real speech was found
+        let speechDetectedInSession = false; // Track if server VAD found real speech
         let recordingStartTime = null;
-        const MIN_RECORDING_DURATION = 800; // ms - ignore very short recordings
+        const MIN_RECORDING_DURATION = 600; // ms - ignore very short recordings
         const MIN_TRANSCRIPT_LENGTH = 2; // chars - ignore empty/tiny transcripts
         
         // Get API key from URL params or localStorage
@@ -427,6 +427,12 @@
                     // Legacy non-streaming audio
                     playAudioWithCallback(msg.data, msg.sample_rate, onAudioComplete);
                     setStatus('Speaking...');
+                    break;
+                case 'vad_status':
+                    // Server-side Silero VAD detected real speech
+                    if (msg.speech_detected) {
+                        speechDetectedInSession = true;
+                    }
                     break;
                 case 'pong':
                     break;
@@ -573,18 +579,15 @@
                         const base64 = float32ToBase64(audioData);
                         ws.send(JSON.stringify({ type: 'audio', data: base64 }));
                         
-                        // VAD: check if audio has meaningful energy (not mouse clicks/ambient)
+                        // In continuous mode, use energy for silence detection
+                        // Speech detection is handled by server-side Silero VAD
                         if (continuousMode) {
                             const energy = audioData.reduce((sum, val) => sum + Math.abs(val), 0) / audioData.length;
-                            if (energy > 0.03) {
+                            if (energy > 0.01) {
                                 lastSoundTime = Date.now();
-                                speechDetectedInSession = true;
-                            } else if (Date.now() - lastSoundTime > silenceThreshold) {
-                                // Only stop if we detected real speech first
-                                // Otherwise keep listening — don't kill continuous mode on noise
-                                if (speechDetectedInSession) {
-                                    stopRecording();
-                                }
+                            } else if (speechDetectedInSession && Date.now() - lastSoundTime > silenceThreshold) {
+                                // Server VAD confirmed speech, and now we have silence → send it
+                                stopRecording();
                             }
                         }
                     }
@@ -637,15 +640,15 @@
             }
             
             if (ws && ws.readyState === WebSocket.OPEN) {
-                if (tooShort || !speechDetectedInSession) {
-                    // Too short or no real speech — don't send, just re-listen in continuous
+                if (continuousMode && (tooShort || !speechDetectedInSession)) {
+                    // Continuous mode: no real speech detected — silently re-listen
                     ws.send(JSON.stringify({ type: 'cancel_listening' }));
-                    if (continuousMode) {
-                        setStatus('🎙️ Listening...', true);
-                        setTimeout(() => { if (continuousMode) startRecording(); }, 300);
-                    }
+                    setStatus('🎙️ Listening...', true);
+                    setTimeout(() => { if (continuousMode) startRecording(); }, 300);
                     return;
                 }
+                // Push-to-talk: always send (user explicitly held button)
+                // Continuous with speech: send for processing
                 ws.send(JSON.stringify({ type: 'stop_listening' }));
             }
         }
