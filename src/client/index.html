@@ -536,9 +536,11 @@
         let audioQ = [], playing = false, curMsgEl = null, streamTxt = '';
         let playCtx = null, nextTime = 0;
 
-        // Waveform data
-        let waveData = new Float32Array(128);
+        // Waveform data — smoothed at 60fps, decoupled from audio callback
+        let waveRaw = new Float32Array(128);   // latest from mic
+        let waveSmooth = new Float32Array(48);  // smoothed per-bar values
         let waveAnim = null;
+        const WAVE_LERP = 0.18;  // smoothing factor (0=frozen, 1=instant)
 
         // ── Canvas setup ──
         function sizeCanvas() {
@@ -551,7 +553,8 @@
         window.addEventListener('resize', sizeCanvas);
 
         // ── Draw waveform ──
-        function drawWave(data, color) {
+        // Render bars from smoothed array
+        function renderBars(color) {
             const w = canvas.width / devicePixelRatio;
             const h = canvas.height / devicePixelRatio;
             ctx.clearRect(0, 0, w, h);
@@ -559,19 +562,14 @@
             const bars = 48;
             const gap = 2.5;
             const barW = (w - (bars - 1) * gap) / bars;
-            const step = Math.floor(data.length / bars);
             const radius = 1.5;
 
             for (let i = 0; i < bars; i++) {
-                let sum = 0;
-                for (let j = 0; j < step; j++) sum += Math.abs(data[i * step + j] || 0);
-                const avg = sum / step;
-                const barH = Math.max(3, Math.min(h - 4, avg * 600));
+                const barH = Math.max(3, waveSmooth[i]);
                 const x = i * (barW + gap);
                 const y = (h - barH) / 2;
 
                 ctx.fillStyle = color;
-                // Rounded rect
                 ctx.beginPath();
                 ctx.moveTo(x + radius, y);
                 ctx.lineTo(x + barW - radius, y);
@@ -586,30 +584,47 @@
             }
         }
 
-        function drawSpeakingWave() {
-            if (uiState !== 'speaking') return;
-            const n = 128;
-            const d = new Float32Array(n);
-            const t = performance.now() / 1000;
-            for (let i = 0; i < n; i++) {
-                d[i] = 0.02 + 0.03 * Math.sin(t * 3 + i * 0.15)
-                      + 0.015 * Math.sin(t * 5.7 + i * 0.3)
-                      + 0.01 * Math.random();
+        // 60fps listening loop — smoothly interpolates toward raw mic data
+        function animateListening() {
+            if (uiState !== 'listening') return;
+            const h = canvas.height / devicePixelRatio;
+            const bars = 48;
+            const step = Math.floor(waveRaw.length / bars);
+
+            for (let i = 0; i < bars; i++) {
+                let sum = 0;
+                for (let j = 0; j < step; j++) sum += Math.abs(waveRaw[i * step + j] || 0);
+                const target = Math.min(h - 4, (sum / step) * 600);
+                waveSmooth[i] += (target - waveSmooth[i]) * WAVE_LERP;
             }
-            drawWave(d, 'rgba(16, 185, 129, 0.7)');
-            waveAnim = requestAnimationFrame(drawSpeakingWave);
+            renderBars('rgba(59, 130, 246, 0.7)');
+            waveAnim = requestAnimationFrame(animateListening);
         }
 
-        function drawProcessingWave() {
-            if (uiState !== 'processing') return;
-            const n = 128;
-            const d = new Float32Array(n);
+        function animateSpeaking() {
+            if (uiState !== 'speaking') return;
+            const h = canvas.height / devicePixelRatio;
             const t = performance.now() / 1000;
-            for (let i = 0; i < n; i++) {
-                d[i] = 0.008 + 0.012 * Math.sin(t * 2 + i * 0.2);
+            for (let i = 0; i < 48; i++) {
+                const target = (0.02 + 0.03 * Math.sin(t * 3 + i * 0.15)
+                              + 0.015 * Math.sin(t * 5.7 + i * 0.3)
+                              + 0.01 * Math.random()) * 600;
+                waveSmooth[i] += (Math.min(h - 4, target) - waveSmooth[i]) * 0.12;
             }
-            drawWave(d, 'rgba(245, 158, 11, 0.5)');
-            waveAnim = requestAnimationFrame(drawProcessingWave);
+            renderBars('rgba(16, 185, 129, 0.7)');
+            waveAnim = requestAnimationFrame(animateSpeaking);
+        }
+
+        function animateProcessing() {
+            if (uiState !== 'processing') return;
+            const h = canvas.height / devicePixelRatio;
+            const t = performance.now() / 1000;
+            for (let i = 0; i < 48; i++) {
+                const target = (0.008 + 0.012 * Math.sin(t * 2 + i * 0.2)) * 600;
+                waveSmooth[i] += (Math.min(h - 4, target) - waveSmooth[i]) * 0.08;
+            }
+            renderBars('rgba(245, 158, 11, 0.5)');
+            waveAnim = requestAnimationFrame(animateProcessing);
         }
 
         // ── UI State Machine ──
@@ -635,10 +650,13 @@
 
             if (waveAnim) { cancelAnimationFrame(waveAnim); waveAnim = null; }
 
-            if (state === 'speaking') drawSpeakingWave();
-            else if (state === 'processing') drawProcessingWave();
+            if (state === 'listening') animateListening();
+            else if (state === 'speaking') animateSpeaking();
+            else if (state === 'processing') animateProcessing();
             else if (state === 'idle') {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                // Fade bars to zero smoothly
+                waveSmooth.fill(0);
+                ctx.clearRect(0, 0, canvas.width / devicePixelRatio, canvas.height / devicePixelRatio);
             }
         }
 
@@ -821,9 +839,8 @@
                     let s = ''; for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
                     ws.send(JSON.stringify({ type: 'audio', data: btoa(s) }));
 
-                    // Waveform
-                    waveData = new Float32Array(d);
-                    drawWave(waveData, 'rgba(59, 130, 246, 0.7)');
+                    // Store for waveform (rendered at 60fps by animateListening)
+                    waveRaw = new Float32Array(d);
 
                     // Silence detect
                     if (continuous) {
