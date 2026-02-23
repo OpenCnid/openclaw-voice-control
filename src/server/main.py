@@ -16,6 +16,10 @@ import os
 from pathlib import Path
 from typing import Optional
 
+# Load .env into os.environ BEFORE anything reads env vars
+from dotenv import load_dotenv
+load_dotenv()
+
 import numpy as np
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
@@ -113,11 +117,13 @@ async def startup():
     
     if gateway_url and gateway_token:
         # Use OpenClaw gateway (connects to Aria!)
-        logger.info(f"🦞 Connecting to OpenClaw gateway: {gateway_url}")
+        # Use voice-specific agent if available, fall back to main with Sonnet for speed
+        voice_model = os.getenv("OPENCLAW_VOICE_MODEL", "anthropic/claude-sonnet-4-6")
+        logger.info(f"🦞 Connecting to OpenClaw gateway: {gateway_url} (model: {voice_model})")
         backend = AIBackend(
             backend_type="openai",  # Gateway speaks OpenAI API
             url=f"{gateway_url}/v1",
-            model="openclaw:voice",  # Maps to 'voice' agent in config
+            model=voice_model,
             api_key=gateway_token,
             system_prompt=(
                 "This conversation is happening via real-time voice chat. "
@@ -279,7 +285,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     })
                     logger.info(f"Transcript: {transcript}")
                     
-                    if transcript.strip():
+                    if transcript.strip() and len(transcript.strip()) >= 2:
                         # Stream AI response with progressive TTS
                         logger.debug("Streaming AI response...")
                         
@@ -348,6 +354,12 @@ async def websocket_endpoint(websocket: WebSocket):
                 audio_buffer = []
                 await websocket.send_json({"type": "listening_stopped"})
                 logger.debug("Stopped listening")
+                
+            elif msg["type"] == "cancel_listening":
+                # Client detected noise/too-short — discard without processing
+                is_listening = False
+                audio_buffer = []
+                logger.debug("Listening cancelled (noise/too short)")
                 
             elif msg["type"] == "audio" and is_listening:
                 # Decode base64 audio
