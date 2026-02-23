@@ -117,13 +117,13 @@ async def startup():
     
     if gateway_url and gateway_token:
         # Use OpenClaw gateway (connects to Aria!)
-        # Use voice-specific agent if available, fall back to main with Sonnet for speed
-        voice_model = os.getenv("OPENCLAW_VOICE_MODEL", "anthropic/claude-sonnet-4-6")
-        logger.info(f"🦞 Connecting to OpenClaw gateway: {gateway_url} (model: {voice_model})")
+        # Route to main agent's workspace — same personality, memory, tools
+        voice_agent = os.getenv("OPENCLAW_VOICE_AGENT", "main")
+        logger.info(f"🦞 Connecting to OpenClaw gateway: {gateway_url} (agent: {voice_agent})")
         backend = AIBackend(
             backend_type="openai",  # Gateway speaks OpenAI API
             url=f"{gateway_url}/v1",
-            model=voice_model,
+            model=f"openclaw:{voice_agent}",
             api_key=gateway_token,
             system_prompt=(
                 "This conversation is happening via real-time voice chat. "
