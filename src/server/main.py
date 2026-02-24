@@ -120,20 +120,31 @@ async def startup():
         # Route to voice agent — Sonnet, shared workspace, orchestration tools only
         voice_agent = os.getenv("OPENCLAW_VOICE_AGENT", "voice")
         logger.info(f"🦞 Connecting to OpenClaw gateway: {gateway_url} (agent: {voice_agent})")
+        # Load voice system prompt from file (keeps personalization out of source code)
+        # Check: env var path → ./voice-prompt.txt → generic fallback
+        voice_prompt_path = os.getenv("OPENCLAW_VOICE_PROMPT_FILE", "voice-prompt.txt")
+        if os.path.exists(voice_prompt_path):
+            with open(voice_prompt_path) as f:
+                voice_system_prompt = f.read().strip()
+            logger.info(f"Loaded voice prompt from {voice_prompt_path}")
+        else:
+            logger.warning("No voice-prompt.txt found — using generic default. Create voice-prompt.txt to customize.")
+            voice_system_prompt = (
+                "This conversation is happening via real-time voice chat. "
+                "Keep responses concise and conversational — 2-5 sentences for most replies. "
+                "You are speaking out loud, so use plain speech only. "
+                "No markdown, bullet points, code blocks, or visual formatting. "
+                "You can use tools when needed. Summarize results conversationally. "
+                "Be direct and helpful."
+            )
+        
         backend = AIBackend(
             backend_type="openai",  # Gateway speaks OpenAI API
             url=f"{gateway_url}/v1",
             model=f"openclaw:{voice_agent}",
             api_key=gateway_token,
-            max_tokens=300,  # Keep voice responses short
-            system_prompt=(
-                "This conversation is happening via real-time voice chat. "
-                "Keep responses concise and conversational — 2-4 sentences max. "
-                "DO NOT use any tools (browser, exec, file read, web search, etc). "
-                "Just talk. No markdown, bullet points, code blocks, or formatting. "
-                "If someone asks you to do something that requires tools, tell them "
-                "to ask you in the text chat instead."
-            ),
+            max_tokens=600,
+            system_prompt=voice_system_prompt,
         )
     else:
         # Fallback to direct OpenAI
@@ -259,6 +270,71 @@ async def websocket_endpoint(websocket: WebSocket):
     is_listening = False
     session_start = None
     
+    async def stream_ai_response(user_text: str):
+        """Stream AI response with progressive TTS for a given user message."""
+        logger.debug("Streaming AI response...")
+        
+        full_response = ""
+        sentence_buffer = ""
+        
+        # Stream response and synthesize sentences as they complete
+        async for chunk in backend.chat_stream(user_text):
+            full_response += chunk
+            sentence_buffer += chunk
+            
+            # Send text chunk for progressive display
+            await websocket.send_json({
+                "type": "response_chunk",
+                "text": chunk,
+            })
+            
+            # Check for sentence boundaries
+            while any(sep in sentence_buffer for sep in ['. ', '! ', '? ', '.\n', '!\n', '?\n']):
+                # Find first sentence boundary
+                earliest_idx = len(sentence_buffer)
+                for sep in ['. ', '! ', '? ', '.\n', '!\n', '?\n']:
+                    idx = sentence_buffer.find(sep)
+                    if idx != -1 and idx < earliest_idx:
+                        earliest_idx = idx + len(sep)
+                
+                if earliest_idx < len(sentence_buffer):
+                    sentence = sentence_buffer[:earliest_idx].strip()
+                    sentence_buffer = sentence_buffer[earliest_idx:]
+                    
+                    if sentence:
+                        # Clean and synthesize this sentence
+                        speech_text = clean_for_speech(sentence)
+                        if speech_text:
+                            logger.debug(f"Synthesizing: {speech_text[:50]}...")
+                            async for audio_chunk in tts.synthesize_stream(speech_text):
+                                audio_b64 = base64.b64encode(audio_chunk).decode()
+                                await websocket.send_json({
+                                    "type": "audio_chunk",
+                                    "data": audio_b64,
+                                    "format": "mp3",
+                                })
+                else:
+                    break
+        
+        # Handle any remaining text
+        if sentence_buffer.strip():
+            speech_text = clean_for_speech(sentence_buffer.strip())
+            if speech_text:
+                async for audio_chunk in tts.synthesize_stream(speech_text):
+                    audio_b64 = base64.b64encode(audio_chunk).decode()
+                    await websocket.send_json({
+                        "type": "audio_chunk",
+                        "data": audio_b64,
+                        "format": "mp3",
+                    })
+        
+        # Signal end of response
+        await websocket.send_json({
+            "type": "response_complete",
+            "text": full_response,
+        })
+        logger.info(f"Response complete: {full_response[:100]}...")
+    
     try:
         while True:
             data = await websocket.receive_text()
@@ -289,74 +365,18 @@ async def websocket_endpoint(websocket: WebSocket):
                     logger.info(f"Transcript: {transcript}")
                     
                     if transcript.strip() and len(transcript.strip()) >= 2:
-                        # Stream AI response with progressive TTS
-                        logger.debug("Streaming AI response...")
-                        
-                        full_response = ""
-                        sentence_buffer = ""
-                        audio_chunks = []
-                        
-                        # Stream response and synthesize sentences as they complete
-                        async for chunk in backend.chat_stream(transcript):
-                            full_response += chunk
-                            sentence_buffer += chunk
-                            
-                            # Send text chunk for progressive display
-                            await websocket.send_json({
-                                "type": "response_chunk",
-                                "text": chunk,
-                            })
-                            
-                            # Check for sentence boundaries
-                            while any(sep in sentence_buffer for sep in ['. ', '! ', '? ', '.\n', '!\n', '?\n']):
-                                # Find first sentence boundary
-                                earliest_idx = len(sentence_buffer)
-                                for sep in ['. ', '! ', '? ', '.\n', '!\n', '?\n']:
-                                    idx = sentence_buffer.find(sep)
-                                    if idx != -1 and idx < earliest_idx:
-                                        earliest_idx = idx + len(sep)
-                                
-                                if earliest_idx < len(sentence_buffer):
-                                    sentence = sentence_buffer[:earliest_idx].strip()
-                                    sentence_buffer = sentence_buffer[earliest_idx:]
-                                    
-                                    if sentence:
-                                        # Clean and synthesize this sentence
-                                        speech_text = clean_for_speech(sentence)
-                                        if speech_text:
-                                            logger.debug(f"Synthesizing: {speech_text[:50]}...")
-                                            async for audio_chunk in tts.synthesize_stream(speech_text):
-                                                audio_b64 = base64.b64encode(audio_chunk).decode()
-                                                await websocket.send_json({
-                                                    "type": "audio_chunk",
-                                                    "data": audio_b64,
-                                                    "format": "mp3",
-                                                })
-                                else:
-                                    break
-                        
-                        # Handle any remaining text
-                        if sentence_buffer.strip():
-                            speech_text = clean_for_speech(sentence_buffer.strip())
-                            if speech_text:
-                                async for audio_chunk in tts.synthesize_stream(speech_text):
-                                    audio_b64 = base64.b64encode(audio_chunk).decode()
-                                    await websocket.send_json({
-                                        "type": "audio_chunk",
-                                        "data": audio_b64,
-                                        "format": "mp3",
-                                    })
-                        
-                        # Signal end of response
-                        await websocket.send_json({
-                            "type": "response_complete",
-                            "text": full_response,
-                        })
-                        logger.info(f"Response complete: {full_response[:100]}...")
+                        await stream_ai_response(transcript)
                 
                 audio_buffer = []
                 await websocket.send_json({"type": "listening_stopped"})
                 logger.debug("Stopped listening")
+            
+            elif msg["type"] == "text_message":
+                # Text input from the UI — skip STT, go straight to AI
+                user_text = (msg.get("text") or "").strip()
+                if user_text:
+                    logger.info(f"Text message: {user_text}")
+                    await stream_ai_response(user_text)
                 
             elif msg["type"] == "new_session":
                 # Clear conversation history for a fresh start

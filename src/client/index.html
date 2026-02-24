@@ -1196,8 +1196,8 @@
                 ? `<span class="dots">${txt}</span>`
                 : txt;
 
-            // Waveform visible in all active states and cont-idle (subtle breathing)
-            waveWrap.classList.toggle('visible', state !== 'idle');
+            // Waveform visible in active states and cont-idle (subtle breathing), hidden when idle or paused
+            waveWrap.classList.toggle('visible', state !== 'idle' && state !== 'paused');
 
             // Show interrupt indicator on orb during speaking/processing
             orbBtn.classList.toggle('interruptable', state === 'speaking' || state === 'processing');
@@ -1538,7 +1538,7 @@
             }
             setState('paused');
             haptic(40);
-            logger && console.log('Continuous mode paused');
+            console.log('Continuous mode paused');
         }
 
         function resumeContinuous() {
@@ -1646,6 +1646,21 @@
             const text = textInput.value.trim();
             if (!text || !ws || ws.readyState !== 1) return;
 
+            // Cancel any active recording to prevent overlapping responses
+            if (recording) {
+                recording = false;
+                if (audioProc) { audioProc.disconnect(); audioProc = null; }
+                if (audioSrc) { audioSrc.disconnect(); audioSrc = null; }
+                if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'cancel_listening' }));
+            }
+
+            // Cut off any audio still playing from previous response
+            audioQ = [];
+            if (playing) {
+                playing = false;
+                if (playCtx && playCtx.state !== 'closed') { playCtx.close().catch(() => {}); playCtx = null; }
+            }
+
             // Show user message in chat
             addMsg('user', text);
             textInput.value = '';
@@ -1656,7 +1671,7 @@
 
             // Set processing state
             setState('processing');
-            streamTxt = ''; curMsgEl = null; audioQ = [];
+            streamTxt = ''; curMsgEl = null;
         }
 
         textInput.addEventListener('input', () => {
