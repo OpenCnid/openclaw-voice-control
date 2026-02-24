@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>🦞 Voice Control</title>
+    <title>VoiceClaw · OpenClaw</title>
     <style>
         :root {
             --bg: #09090b;
@@ -202,6 +202,28 @@
             gap: 8px;
         }
 
+        .header-brand {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 0.9rem;
+        }
+
+        .brand-text {
+            font-weight: 300;
+            letter-spacing: 0.04em;
+            color: var(--text-dim);
+        }
+
+        .brand-accent {
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            background: linear-gradient(135deg, var(--teal), var(--blue));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
         .header-title {
             font-size: 0.85rem;
             font-weight: 600;
@@ -235,52 +257,7 @@
             gap: 12px;
         }
 
-        .toggle-group {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .toggle-label {
-            font-size: 0.7rem;
-            color: var(--text-dim);
-            cursor: pointer;
-            user-select: none;
-        }
-
-        .toggle {
-            position: relative;
-            width: 34px;
-            height: 18px;
-            cursor: pointer;
-        }
-
-        .toggle input { display: none; }
-
-        .toggle-track {
-            position: absolute;
-            inset: 0;
-            background: #27272a;
-            border-radius: 18px;
-            transition: background 0.2s;
-        }
-
-        .toggle-thumb {
-            position: absolute;
-            top: 2px;
-            left: 2px;
-            width: 14px;
-            height: 14px;
-            background: #52525b;
-            border-radius: 50%;
-            transition: all 0.2s;
-        }
-
-        .toggle input:checked ~ .toggle-track { background: var(--blue-dim); }
-        .toggle input:checked ~ .toggle-thumb {
-            left: 18px;
-            background: var(--blue);
-        }
+        /* (toggle styles removed — mode switcher replaces header toggle) */
 
         .icon-btn {
             background: none;
@@ -321,6 +298,7 @@
         }
         .empty-icon { font-size: 2rem; opacity: 0.4; }
         .empty p { font-size: 0.8rem; }
+        .empty-sub { font-size: 0.7rem; opacity: 0.5; }
 
         /* Messages */
         .msg {
@@ -583,11 +561,135 @@
             border: 1px solid var(--border);
         }
 
+        /* ── Text Input ── */
+        .input-row {
+            width: 100%;
+            max-width: 560px;
+            padding: 0 4px;
+        }
+
+        .text-input-wrap {
+            display: flex;
+            align-items: center;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 2px 4px 2px 14px;
+            transition: border-color 0.15s;
+        }
+        .text-input-wrap:focus-within { border-color: var(--blue); }
+
+        .text-input {
+            flex: 1;
+            background: none;
+            border: none;
+            outline: none;
+            color: var(--text);
+            font-size: 0.85rem;
+            font-family: inherit;
+            padding: 8px 0;
+            min-width: 0;
+        }
+        .text-input::placeholder { color: var(--text-muted); }
+
+        .send-btn {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            border: none;
+            background: var(--blue);
+            color: #fff;
+            font-size: 0.85rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: all 0.15s;
+            opacity: 0.4;
+        }
+        .send-btn:not(:disabled) { opacity: 1; }
+        .send-btn:not(:disabled):hover { background: #2563eb; transform: scale(1.05); }
+        .send-btn:disabled { cursor: default; }
+
+        /* ── Mode Switcher ── */
+        .mode-switcher {
+            display: flex;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 2px;
+            gap: 2px;
+        }
+
+        .mode-btn {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 6px 14px;
+            border: none;
+            border-radius: 8px;
+            background: transparent;
+            color: var(--text-muted);
+            font-size: 0.72rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .mode-btn:hover { color: var(--text-dim); }
+
+        .mode-btn.active {
+            background: var(--surface);
+            color: var(--text);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        }
+
+        .mode-btn.active[data-mode="continuous"] {
+            background: var(--blue-dim);
+            color: var(--blue);
+        }
+
+        .mode-icon { font-size: 0.8rem; }
+
+        /* ── State: Continuous Idle (ready/breathing) ── */
+        .state-cont-idle .orb-btn {
+            border-color: rgba(59, 130, 246, 0.3);
+            color: var(--blue);
+            box-shadow: 0 0 12px rgba(59, 130, 246, 0.08);
+        }
+        .state-cont-idle .orb-ring {
+            border-color: rgba(59, 130, 246, 0.1);
+            animation: ringBreath 3s ease-in-out infinite;
+        }
+        .state-cont-idle .orb-ring-outer {
+            border-color: rgba(59, 130, 246, 0.05);
+            animation: ringBreath 3s ease-in-out infinite 0.8s;
+        }
+        .state-cont-idle .state-label { color: var(--blue); opacity: 0.6; }
+
+        /* ── State: Paused (continuous mode muted) ── */
+        .state-paused .orb-btn {
+            border-color: #3f3f46;
+            background: #18181b;
+            color: #52525b;
+            box-shadow: none;
+        }
+        .state-paused .orb-ring,
+        .state-paused .orb-ring-outer {
+            border-color: transparent;
+            animation: none;
+        }
+        .state-paused .state-label { color: var(--text-muted); }
+
         /* Keyboard hint */
         .kb-hint {
             font-size: 0.65rem;
             color: var(--text-muted);
             opacity: 0.6;
+            transition: opacity 0.2s;
         }
         .kb-hint kbd {
             background: #18181b;
@@ -754,8 +856,7 @@
     <div class="sidebar" id="sidebar">
         <div class="sidebar-header">
             <div class="sidebar-brand">
-                <span>🦞 Voice Control</span>
-                <button class="icon-btn" id="sidebarClose" title="Close sidebar">✕</button>
+                <span>Conversations</span>
             </div>
             <button class="new-chat-btn" id="newChatBtn">+ New Chat</button>
         </div>
@@ -774,27 +875,22 @@
     <div class="header">
         <div class="header-left">
             <button class="hamburger" id="hamburgerBtn" title="Toggle sidebar">☰</button>
+            <span class="header-brand">🦞 <span class="brand-text">Voice<span class="brand-accent">Claw</span></span></span>
             <div class="status-pill">
                 <span class="status-dot" id="dot"></span>
                 <span id="connLabel">Connecting</span>
             </div>
         </div>
         <div class="header-right">
-            <div class="toggle-group">
-                <label class="toggle" id="contToggle">
-                    <input type="checkbox" id="continuousMode">
-                    <div class="toggle-track"></div>
-                    <div class="toggle-thumb"></div>
-                </label>
-                <label class="toggle-label" for="continuousMode">Continuous</label>
-            </div>
+            <button class="icon-btn" id="settingsBtn" title="Settings">⚙</button>
         </div>
     </div>
 
     <div class="chat" id="chat">
         <div class="empty" id="empty">
-            <div class="empty-icon">🎙️</div>
-            <p>Hold mic or enable continuous mode</p>
+            <div class="empty-icon">👋</div>
+            <p id="emptyText">Ready when you are</p>
+            <p class="empty-sub" id="emptySub">Just start talking, or type below</p>
         </div>
     </div>
 
@@ -812,12 +908,29 @@
         </div>
 
         <div class="state-label" id="stateLabel">Hold to talk</div>
-        <div class="kb-hint"><kbd>Space</kbd> talk · <kbd>Esc</kbd> stop</div>
+
+        <div class="input-row">
+            <div class="text-input-wrap">
+                <input type="text" class="text-input" id="textInput" placeholder="Type a message…" autocomplete="off">
+                <button class="send-btn" id="sendBtn" title="Send" disabled>➤</button>
+            </div>
+        </div>
+
+        <div class="mode-switcher" id="modeSwitcher">
+            <button class="mode-btn" id="modePush" data-mode="push">
+                <span class="mode-icon">🎙️</span> Push to Talk
+            </button>
+            <button class="mode-btn active" id="modeCont" data-mode="continuous">
+                <span class="mode-icon">∞</span> Always On
+            </button>
+        </div>
+        <div class="kb-hint" id="kbHint"><kbd>Space</kbd> hold to talk · <kbd>Esc</kbd> stop</div>
     </div>
 
     <div class="footer">
-        Made with 🦞 by <a href="https://github.com/OpenCnid">Cnid</a> ·
-        <a href="https://github.com/OpenCnid/openclaw-voice-control">GitHub</a>
+        Made by <a href="https://github.com/OpenCnid">Cnid</a> ·
+        <a href="https://github.com/OpenCnid/openclaw-voice-control">GitHub</a> ·
+        Powered by <a href="https://openclaw.ai">OpenClaw</a> 🦞
     </div>
     </div><!-- /main -->
 
@@ -844,7 +957,7 @@
                 </div>
             </div>
             <div class="setting-group">
-                <label>Silence Threshold</label>
+                <label>Pause before sending</label>
                 <div class="setting-row">
                     <input type="range" id="silenceSlider" min="500" max="5000" value="2000" step="100">
                     <span class="setting-val" id="silenceVal">2.0s</span>
@@ -885,11 +998,15 @@
         let ws = null;
         let audioCtx = null, audioSrc = null, audioProc = null, mic = null;
         let recording = false;
-        let continuous = localStorage.getItem('voiceControlContinuous') === 'true';
+        // Default to continuous (always-on) for fresh installs
+        const contPref = localStorage.getItem('voiceControlContinuous');
+        let continuous = contPref === null ? true : contPref === 'true';
         let speechDetected = false, recStart = 0;
-        let uiState = 'idle'; // idle | listening | processing | speaking
+        let uiState = 'idle'; // idle | listening | processing | speaking | cont-idle | paused
+        let paused = false; // continuous mode pause state
         let SILENCE_MS = settings.silence;
         const MIN_DUR = 600, MIN_LEN = 2;
+        const RELISTEN_DELAY = 250; // unified fast re-listen delay for continuous mode
 
         // Streaming
         let audioQ = [], playing = false, curMsgEl = null, streamTxt = '';
@@ -1007,6 +1124,20 @@
             waveAnim = requestAnimationFrame(animateProcessing);
         }
 
+        // Continuous-idle: very subtle breathing bars to show "I'm alive and ready"
+        function animateContIdle() {
+            if (uiState !== 'cont-idle') return;
+            const h = canvas.height / devicePixelRatio;
+            const t = performance.now() / 1000;
+            for (let i = 0; i < 48; i++) {
+                const target = (0.004 + 0.006 * Math.sin(t * 1.2 + i * 0.12)
+                              + 0.003 * Math.sin(t * 2.1 + i * 0.25)) * 600;
+                waveSmooth[i] += (Math.min(h - 4, target) - waveSmooth[i]) * 0.06;
+            }
+            renderBars('rgba(59, 130, 246, 0.3)');
+            waveAnim = requestAnimationFrame(animateContIdle);
+        }
+
         // ── Haptic feedback ──
         function haptic(pattern) {
             if (navigator.vibrate) navigator.vibrate(pattern);
@@ -1026,14 +1157,15 @@
         }
 
         function cancelProcessing() {
-            // Can't actually cancel the server-side request, but we can
-            // ignore incoming chunks and move on
             streamTxt = '';
             curMsgEl = null;
             haptic(30);
             if (continuous) {
-                setState('listening');
-                setTimeout(() => continuous && startRec(), 300);
+                if (paused) { setState('paused'); return; }
+                setState('cont-idle');
+                setTimeout(() => {
+                    if (continuous && !paused && !recording) startRec();
+                }, RELISTEN_DELAY);
             } else {
                 setState('idle');
             }
@@ -1043,22 +1175,28 @@
         function setState(state, label) {
             haptic(state === 'listening' ? 20 : state === 'speaking' ? [10, 30, 10] : 0);
             uiState = state;
-            voiceBar.className = 'voice-bar' + (state !== 'idle' ? ` state-${state}` : '');
 
-            const icons = { idle: '🎙️', listening: '🎙️', processing: '⏳', speaking: '🔊' };
-            orbBtn.textContent = icons[state];
+            // Map cont-idle to CSS class
+            const cssState = state === 'cont-idle' ? 'cont-idle' : state;
+            voiceBar.className = 'voice-bar' + (cssState !== 'idle' ? ` state-${cssState}` : '');
+
+            const icons = { idle: '🎙️', 'cont-idle': '🎙️', listening: '🎙️', processing: '⏳', speaking: '🔊', paused: '⏸️' };
+            orbBtn.textContent = icons[state] || '🎙️';
 
             const labels = {
-                idle: continuous ? 'Tap to start' : 'Hold to talk',
+                idle: 'Hold to talk',
+                'cont-idle': 'Ready — listening for you',
                 listening: 'Listening…',
                 processing: 'Thinking',
                 speaking: 'Speaking…',
+                paused: 'Paused — tap to resume',
             };
             const txt = label || labels[state];
             stateLbl.innerHTML = state === 'processing'
                 ? `<span class="dots">${txt}</span>`
                 : txt;
 
+            // Waveform visible in all active states and cont-idle (subtle breathing)
             waveWrap.classList.toggle('visible', state !== 'idle');
 
             // Show interrupt indicator on orb during speaking/processing
@@ -1069,10 +1207,28 @@
             if (state === 'listening') animateListening();
             else if (state === 'speaking') animateSpeaking();
             else if (state === 'processing') animateProcessing();
-            else if (state === 'idle') {
-                // Fade bars to zero smoothly
+            else if (state === 'cont-idle') animateContIdle();
+            else if (state === 'idle' || state === 'paused') {
                 waveSmooth.fill(0);
                 ctx.clearRect(0, 0, canvas.width / devicePixelRatio, canvas.height / devicePixelRatio);
+            }
+
+            // Update keyboard hint
+            updateHints();
+        }
+
+        function updateHints() {
+            const hint = $('kbHint');
+            const emptyText = $('emptyText');
+            const emptySub = $('emptySub');
+            if (continuous) {
+                hint.innerHTML = '<kbd>Space</kbd> pause/resume · <kbd>Esc</kbd> pause';
+                if (emptyText) emptyText.textContent = 'Ready when you are';
+                if (emptySub) emptySub.textContent = 'Just start talking, or type below';
+            } else {
+                hint.innerHTML = '<kbd>Space</kbd> hold to talk · <kbd>Esc</kbd> stop';
+                if (emptyText) emptyText.textContent = 'Ready when you are';
+                if (emptySub) emptySub.textContent = 'Hold the mic button or type below';
             }
         }
 
@@ -1163,8 +1319,11 @@
 
                 case 'transcript':
                     if (!m.text || m.text.trim().length < MIN_LEN) {
-                        if (continuous) { setState('listening'); setTimeout(() => continuous && startRec(), 300); }
-                        else setState('idle');
+                        if (continuous) {
+                            if (paused) { setState('paused'); break; }
+                            setState('cont-idle');
+                            setTimeout(() => { if (continuous && !paused && !recording) startRec(); }, RELISTEN_DELAY);
+                        } else setState('idle');
                         break;
                     }
                     addMsg('user', m.text);
@@ -1187,8 +1346,13 @@
                         curMsgEl.querySelector('.msg-bubble').innerHTML = md(m.text);
                         curMsgEl.setAttribute('data-text', m.text);
                     }
-                    if (continuous && !recording)
-                        setTimeout(() => { if (continuous && !recording && !playing) audioDone(); }, 2000);
+                    // In continuous mode, if no audio is playing, go back to listening (unless paused)
+                    if (continuous && !paused && !recording && !playing)
+                        setTimeout(() => { if (continuous && !paused && !recording && !playing) audioDone(); }, 500);
+                    else if (continuous && paused && !playing)
+                        setState('paused');
+                    else if (!continuous && !playing)
+                        setState('idle');
                     break;
 
                 case 'vad_status':
@@ -1237,8 +1401,11 @@
 
         function audioDone() {
             if (continuous) {
-                setState('listening');
-                setTimeout(() => continuous && startRec(), 800);
+                if (paused) { setState('paused'); return; }
+                setState('cont-idle');
+                setTimeout(() => {
+                    if (continuous && !paused && !recording) startRec();
+                }, RELISTEN_DELAY);
             } else setState('idle');
         }
 
@@ -1257,18 +1424,29 @@
         }
 
         // ── Recording ──
+        // In continuous mode, keep mic + AudioContext alive to avoid teardown/rebuild latency
+        let lastSound = Date.now();
+
         async function startRec() {
             if (recording) return;
             try {
+                // Acquire mic if we don't have one
                 if (!mic) mic = await navigator.mediaDevices.getUserMedia({
                     audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true }
                 });
 
-                audioCtx = new AudioContext({ sampleRate: 16000 });
+                // Reuse AudioContext in continuous mode when possible
+                if (!audioCtx || audioCtx.state === 'closed') {
+                    audioCtx = new AudioContext({ sampleRate: 16000 });
+                }
+                if (audioCtx.state === 'suspended') {
+                    await audioCtx.resume();
+                }
+
                 audioSrc = audioCtx.createMediaStreamSource(mic);
                 audioProc = audioCtx.createScriptProcessor(4096, 1, 1);
 
-                let lastSound = Date.now();
+                lastSound = Date.now();
 
                 audioProc.onaudioprocess = e => {
                     if (!recording || !ws || ws.readyState !== 1) return;
@@ -1281,7 +1459,7 @@
                     // Update bar targets (rendered at 60fps by animateListening)
                     updateBarTargets(d);
 
-                    // Silence detect
+                    // Silence detect in continuous mode
                     if (continuous) {
                         let e2 = 0; for (let i = 0; i < d.length; i++) e2 += Math.abs(d[i]);
                         e2 /= d.length;
@@ -1305,21 +1483,71 @@
             const short = dur < MIN_DUR;
             recording = false;
 
+            // Disconnect processor but keep AudioContext + mic alive in continuous mode
             if (audioProc) { audioProc.disconnect(); audioProc = null; }
             if (audioSrc) { audioSrc.disconnect(); audioSrc = null; }
-            if (audioCtx) { audioCtx.close(); audioCtx = null; }
-            if (!continuous && mic) { mic.getTracks().forEach(t => t.stop()); mic = null; }
+            if (!continuous) {
+                if (audioCtx) { audioCtx.close(); audioCtx = null; }
+                if (mic) { mic.getTracks().forEach(t => t.stop()); mic = null; }
+            }
 
             if (ws && ws.readyState === 1) {
                 if (continuous && (short || !speechDetected)) {
                     ws.send(JSON.stringify({ type: 'cancel_listening' }));
-                    setState('listening');
-                    setTimeout(() => continuous && startRec(), 300);
+                    if (paused) { setState('paused'); return; }
+                    // Quick restart — no state flash, stay in cont-idle briefly
+                    setState('cont-idle');
+                    setTimeout(() => {
+                        if (continuous && !paused && !recording) startRec();
+                    }, RELISTEN_DELAY);
                     return;
                 }
                 ws.send(JSON.stringify({ type: 'stop_listening' }));
                 setState('processing');
             }
+        }
+
+        // Pause/resume continuous mode
+        function pauseContinuous() {
+            if (!continuous || paused) return;
+            paused = true;
+            if (recording) {
+                // Stop current recording without processing
+                recording = false;
+                if (audioProc) { audioProc.disconnect(); audioProc = null; }
+                if (audioSrc) { audioSrc.disconnect(); audioSrc = null; }
+                if (ws && ws.readyState === 1) {
+                    ws.send(JSON.stringify({ type: 'cancel_listening' }));
+                }
+            }
+            setState('paused');
+            haptic(40);
+            logger && console.log('Continuous mode paused');
+        }
+
+        function resumeContinuous() {
+            if (!continuous || !paused) return;
+            paused = false;
+            setState('cont-idle');
+            haptic(20);
+            setTimeout(() => {
+                if (continuous && !paused && !recording) startRec();
+            }, RELISTEN_DELAY);
+            console.log('Continuous mode resumed');
+        }
+
+        function togglePause() {
+            paused ? resumeContinuous() : pauseContinuous();
+        }
+
+        // Clean teardown when leaving continuous mode
+        function teardownContinuous() {
+            paused = false;
+            if (recording) stopRec();
+            if (audioProc) { audioProc.disconnect(); audioProc = null; }
+            if (audioSrc) { audioSrc.disconnect(); audioSrc = null; }
+            if (audioCtx) { audioCtx.close(); audioCtx = null; }
+            if (mic) { mic.getTracks().forEach(t => t.stop()); mic = null; }
         }
 
         // ── Events ──
@@ -1331,31 +1559,104 @@
         orbBtn.addEventListener('click', () => {
             if (uiState === 'speaking') { interruptSpeaking(); return; }
             if (uiState === 'processing') { cancelProcessing(); return; }
-            if (continuous) { recording ? stopRec() : startRec(); }
+            if (continuous) {
+                if (paused) { resumeContinuous(); }
+                else if (uiState === 'listening' || uiState === 'cont-idle') { pauseContinuous(); }
+                else { startRec(); }
+            }
         });
 
         document.addEventListener('keydown', e => {
-            if (e.code === 'Space' && !e.repeat && e.target === document.body) {
+            // Don't hijack Space when typing in the text input
+            const isTyping = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA';
+            if (e.code === 'Space' && !e.repeat && !isTyping) {
                 e.preventDefault();
                 if (uiState === 'speaking') { interruptSpeaking(); return; }
                 if (uiState === 'processing') { cancelProcessing(); return; }
-                recording ? stopRec() : startRec();
+                // In continuous mode, Space toggles pause
+                if (continuous) {
+                    togglePause();
+                } else {
+                    recording ? stopRec() : startRec();
+                }
             }
             if (e.code === 'Escape') {
+                if (isTyping) { e.target.blur(); return; }
                 if (uiState === 'speaking') interruptSpeaking();
                 else if (uiState === 'processing') cancelProcessing();
                 else if (recording) stopRec();
+                // Esc also pauses continuous mode
+                else if (continuous && !paused) pauseContinuous();
             }
         });
 
-        $('continuousMode').addEventListener('change', e => {
-            continuous = e.target.checked;
+        // ── Mode Switcher ──
+        const modePush = $('modePush');
+        const modeCont = $('modeCont');
+
+        function setMode(mode) {
+            const wasContinuous = continuous;
+            continuous = (mode === 'continuous');
             localStorage.setItem('voiceControlContinuous', continuous);
-            setState('idle');
-            if (continuous)
-                navigator.mediaDevices.getUserMedia({ audio: true }).then(s => mic = s).catch(e => showToast('Mic: ' + e.message));
-            else if (mic && !recording) { mic.getTracks().forEach(t => t.stop()); mic = null; }
+
+            // Update button states
+            modePush.classList.toggle('active', !continuous);
+            modeCont.classList.toggle('active', continuous);
+
+            if (continuous && !wasContinuous) {
+                // Switching TO continuous — auto-start listening
+                setState('cont-idle');
+                updateHints();
+                // Small delay then start recording
+                setTimeout(() => {
+                    if (continuous && !recording) startRec();
+                }, 400);
+            } else if (!continuous && wasContinuous) {
+                // Switching FROM continuous — clean teardown
+                teardownContinuous();
+                setState('idle');
+                updateHints();
+            }
+        }
+
+        modePush.addEventListener('click', () => setMode('push'));
+        modeCont.addEventListener('click', () => setMode('continuous'));
+
+        // ── Text Input ──
+        const textInput = $('textInput');
+        const sendBtn = $('sendBtn');
+
+        function sendTextMessage() {
+            const text = textInput.value.trim();
+            if (!text || !ws || ws.readyState !== 1) return;
+
+            // Show user message in chat
+            addMsg('user', text);
+            textInput.value = '';
+            sendBtn.disabled = true;
+
+            // Send as text message to server
+            ws.send(JSON.stringify({ type: 'text_message', text }));
+
+            // Set processing state
+            setState('processing');
+            streamTxt = ''; curMsgEl = null; audioQ = [];
+        }
+
+        textInput.addEventListener('input', () => {
+            sendBtn.disabled = !textInput.value.trim();
         });
+
+        textInput.addEventListener('keydown', e => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendTextMessage();
+            }
+            // Prevent Space from triggering voice when typing
+            e.stopPropagation();
+        });
+
+        sendBtn.addEventListener('click', sendTextMessage);
 
         // ── Settings Panel ──
         const settingsPanel = $('settingsPanel');
@@ -1364,7 +1665,8 @@
         function openSettings() { settingsPanel.classList.add('open'); settingsOverlay.classList.add('open'); }
         function closeSettings() { settingsPanel.classList.remove('open'); settingsOverlay.classList.remove('open'); }
 
-        $('settingsBtn').addEventListener('click', openSettings);
+        const settingsBtn = $('settingsBtn');
+        if (settingsBtn) settingsBtn.addEventListener('click', openSettings);
         $('settingsClose').addEventListener('click', closeSettings);
         settingsOverlay.addEventListener('click', closeSettings);
 
@@ -1545,14 +1847,17 @@
         // ── Sidebar Toggle ──
         const sidebar = $('sidebar');
         const backdrop = $('sidebarBackdrop');
-        const sidebarCollapsed = localStorage.getItem('vc_sidebar') === 'collapsed';
+        // Default to collapsed sidebar for clean first impression
+        const sidebarPref = localStorage.getItem('vc_sidebar');
+        const sidebarCollapsed = sidebarPref === null ? true : sidebarPref === 'collapsed';
 
         function openSidebar() { sidebar.classList.remove('collapsed'); backdrop.classList.add('show'); localStorage.setItem('vc_sidebar', 'open'); }
         function closeSidebar() { sidebar.classList.add('collapsed'); backdrop.classList.remove('show'); localStorage.setItem('vc_sidebar', 'collapsed'); }
         function toggleSidebar() { sidebar.classList.contains('collapsed') ? openSidebar() : closeSidebar(); }
 
         $('hamburgerBtn').addEventListener('click', toggleSidebar);
-        $('sidebarClose').addEventListener('click', closeSidebar);
+        const sidebarCloseBtn = $('sidebarClose');
+        if (sidebarCloseBtn) sidebarCloseBtn.addEventListener('click', closeSidebar);
         backdrop.addEventListener('click', closeSidebar);
         $('newChatBtn').addEventListener('click', createNewSession);
 
@@ -1635,11 +1940,24 @@
         }
         renderSidebar();
 
+        // Restore mode from localStorage
         if (continuous) {
-            $('continuousMode').checked = true;
-            navigator.mediaDevices.getUserMedia({ audio: true })
-                .then(s => mic = s)
-                .catch(e => showToast('Mic: ' + e.message));
+            modePush.classList.remove('active');
+            modeCont.classList.add('active');
+            updateHints();
+            // Auto-start continuous after connection
+            const origConnect = connect;
+            const waitForWs = setInterval(() => {
+                if (ws && ws.readyState === 1) {
+                    clearInterval(waitForWs);
+                    setState('cont-idle');
+                    setTimeout(() => {
+                        if (continuous && !recording) startRec();
+                    }, 600);
+                }
+            }, 200);
+        } else {
+            updateHints();
         }
         connect();
         setInterval(() => { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'ping' })); }, 30000);
