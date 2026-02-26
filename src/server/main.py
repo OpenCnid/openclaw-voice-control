@@ -121,31 +121,16 @@ async def startup():
         # Route to voice agent — Sonnet, shared workspace, orchestration tools only
         voice_agent = os.getenv("OPENCLAW_VOICE_AGENT", "voice")
         logger.info(f"🦞 Connecting to OpenClaw gateway: {gateway_url} (agent: {voice_agent})")
-        # Load voice system prompt from file (keeps personalization out of source code)
-        # Check: env var path → ./voice-prompt.txt → generic fallback
-        voice_prompt_path = os.getenv("OPENCLAW_VOICE_PROMPT_FILE", "voice-prompt.txt")
-        if os.path.exists(voice_prompt_path):
-            with open(voice_prompt_path) as f:
-                voice_system_prompt = f.read().strip()
-            logger.info(f"Loaded voice prompt from {voice_prompt_path}")
-        else:
-            logger.warning("No voice-prompt.txt found — using generic default. Create voice-prompt.txt to customize.")
-            voice_system_prompt = (
-                "This conversation is happening via real-time voice chat. "
-                "Keep responses concise and conversational — 2-5 sentences for most replies. "
-                "You are speaking out loud, so use plain speech only. "
-                "No markdown, bullet points, code blocks, or visual formatting. "
-                "You can use tools when needed. Summarize results conversationally. "
-                "Be direct and helpful."
-            )
-        
+        # OpenClaw gateway mode: no custom system prompt — let OpenClaw's main prompt handle everything
+        # (memory recall, SOUL.md, MEMORY.md, tool instructions, etc.)
+        logger.info("Gateway mode: using OpenClaw default system prompt (no voice-prompt override)")
         backend = AIBackend(
             backend_type="openai",  # Gateway speaks OpenAI API
             url=f"{gateway_url}/v1",
             model=f"openclaw:{voice_agent}",
             api_key=gateway_token,
             max_tokens=600,
-            system_prompt=voice_system_prompt,
+            system_prompt=None,  # Let OpenClaw handle it
         )
     else:
         # Fallback to direct OpenAI

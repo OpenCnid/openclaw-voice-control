@@ -25,10 +25,7 @@ class AIBackend:
         self.model = model
         self.api_key = api_key
         self.max_tokens = max_tokens
-        self.system_prompt = system_prompt or (
-            "You are a helpful voice assistant. Keep responses concise and conversational. "
-            "Aim for 1-2 sentences unless more detail is needed."
-        )
+        self.system_prompt = system_prompt  # None = let OpenClaw handle system prompt
         self.conversation_history: List[Dict] = []
         self._client = None
         self._setup_client()
@@ -92,7 +89,7 @@ class AIBackend:
         })
         
         # Build messages
-        messages = [{"role": "system", "content": self.system_prompt}]
+        messages = ([{"role": "system", "content": self.system_prompt}] if self.system_prompt else [])
         messages.extend(self.conversation_history[-10:])  # Last 10 turns
         
         try:
@@ -126,7 +123,7 @@ class AIBackend:
         })
         
         # Build messages
-        messages = [{"role": "system", "content": self.system_prompt}]
+        messages = ([{"role": "system", "content": self.system_prompt}] if self.system_prompt else [])
         messages.extend(self.conversation_history[-10:])
         
         full_response = ""
