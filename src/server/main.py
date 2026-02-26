@@ -28,7 +28,7 @@ from loguru import logger
 from pydantic_settings import BaseSettings
 
 from .stt import WhisperSTT
-from .tts import ChatterboxTTS
+from .tts import TTSEngine
 from .backend import AIBackend
 from .vad import VoiceActivityDetector
 from .auth import token_manager, load_keys_from_env, APIKey
@@ -75,18 +75,19 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-app = FastAPI(title="Voice Control", version="0.1.0")
 
 # Global instances (initialized on startup)
 stt: Optional[WhisperSTT] = None
-tts: Optional[ChatterboxTTS] = None
+tts: Optional[TTSEngine] = None
 backend: Optional[AIBackend] = None
 vad: Optional[VoiceActivityDetector] = None
 
 
-@app.on_event("startup")
-async def startup():
-    """Initialize models on server start."""
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app):
+    """Initialize models on server start, cleanup on shutdown."""
     global stt, tts, backend, vad
     
     logger.info("Initializing Voice Control server...")
@@ -107,7 +108,7 @@ async def startup():
     
     # Initialize TTS
     logger.info(f"Loading TTS model: {settings.tts_model}")
-    tts = ChatterboxTTS(
+    tts = TTSEngine(
         voice_sample=settings.tts_voice,
     )
     
@@ -147,6 +148,13 @@ async def startup():
     vad = VoiceActivityDetector()
     
     logger.info("✅ Voice Control server ready!")
+    
+    yield  # Server runs here
+    
+    logger.info("Voice Control server shutting down...")
+
+
+app = FastAPI(title="Voice Control", version="0.1.0", lifespan=lifespan)
 
 
 @app.get("/")

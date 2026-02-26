@@ -12,7 +12,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from src.server.stt import WhisperSTT
-from src.server.tts import ChatterboxTTS
+from src.server.tts import TTSEngine
 from src.server.backend import AIBackend
 from src.server.vad import VoiceActivityDetector
 
@@ -45,19 +45,19 @@ class TestWhisperSTT:
         assert isinstance(result, str)
 
 
-class TestChatterboxTTS:
+class TestTTSEngine:
     """Tests for Text-to-Speech module."""
     
     def test_init_loads_model(self):
         """Test that TTS initializes (may be mock or real)."""
-        tts = ChatterboxTTS()
+        tts = TTSEngine()
         assert tts is not None
-        assert tts._backend in ["elevenlabs", "chatterbox", "xtts", "pyttsx3", "mock"]
+        assert tts._backend in ["elevenlabs", "chatterbox", "xtts", "mock"]
     
     @pytest.mark.asyncio
     async def test_synthesize_returns_audio(self):
         """Test that synthesize returns numpy array."""
-        tts = ChatterboxTTS()
+        tts = TTSEngine()
         result = await tts.synthesize("Hello world")
         assert isinstance(result, np.ndarray)
         assert result.dtype == np.float32
@@ -76,11 +76,11 @@ class TestAIBackend:
         assert backend is not None
         assert backend.backend_type == "openai"
     
-    def test_system_prompt_default(self):
-        """Test default system prompt is set."""
+    def test_voice_hint_exists(self):
+        """Test voice system hint is set."""
         backend = AIBackend()
-        assert backend.system_prompt is not None
-        assert "voice assistant" in backend.system_prompt.lower()
+        assert backend.voice_system_hint is not None
+        assert "voice" in backend.voice_system_hint.lower()
     
     def test_clear_history(self):
         """Test conversation history can be cleared."""
@@ -138,7 +138,7 @@ class TestIntegration:
     async def test_stt_tts_round_trip(self):
         """Test STT → TTS round trip (mock mode OK)."""
         stt = WhisperSTT(model_name="tiny", device="cpu")
-        tts = ChatterboxTTS()
+        tts = TTSEngine()
         
         # Generate some audio (silence)
         input_audio = np.zeros(16000, dtype=np.float32)

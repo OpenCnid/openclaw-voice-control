@@ -11,8 +11,8 @@ import numpy as np
 from loguru import logger
 
 
-class ChatterboxTTS:
-    """Text-to-Speech using ElevenLabs, Chatterbox, or fallbacks."""
+class TTSEngine:
+    """Text-to-Speech engine. Tries ElevenLabs → Chatterbox → XTTS → mock."""
     
     def __init__(
         self,
@@ -40,17 +40,7 @@ class ChatterboxTTS:
                 logger.info("✅ ElevenLabs TTS ready")
                 return
             except ImportError:
-                logger.warning("ElevenLabs SDK not installed, trying pip install...")
-                try:
-                    import subprocess
-                    subprocess.check_call(["pip", "install", "elevenlabs", "-q"])
-                    from elevenlabs import ElevenLabs
-                    self._elevenlabs_client = ElevenLabs(api_key=elevenlabs_key)
-                    self._backend = "elevenlabs"
-                    logger.info("✅ ElevenLabs TTS ready (auto-installed)")
-                    return
-                except Exception as e:
-                    logger.warning(f"ElevenLabs auto-install failed: {e}")
+                logger.warning("ElevenLabs SDK not installed — run: pip install elevenlabs")
             except Exception as e:
                 logger.warning(f"ElevenLabs failed: {e}")
         

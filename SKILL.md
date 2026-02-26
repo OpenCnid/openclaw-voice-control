@@ -102,11 +102,15 @@ Then generate user keys via `POST /api/keys`.
 
 ## Files
 
-- `src/server/main.py` - FastAPI server
-- `src/server/stt.py` - Speech-to-text (Whisper)
-- `src/server/tts.py` - Text-to-speech (ElevenLabs/Chatterbox)
-- `src/server/backend.py` - AI backend (gateway or OpenAI)
-- `src/client/index.html` - Browser UI
+- `src/server/main.py` — FastAPI server + WebSocket handler
+- `src/server/stt.py` — Speech-to-text (faster-whisper / openai-whisper)
+- `src/server/tts.py` — Text-to-speech (ElevenLabs → Chatterbox → XTTS → mock)
+- `src/server/backend.py` — AI backend (OpenClaw gateway or direct OpenAI)
+- `src/server/vad.py` — Voice Activity Detection (Silero)
+- `src/server/audio_processing.py` — Audio preprocessing (HPF, noise reduction, normalize)
+- `src/server/text_utils.py` — Clean AI text for TTS
+- `src/server/auth.py` — API key management
+- `src/client/index.html` — Browser UI
 
 ## License
 

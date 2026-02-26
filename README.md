@@ -44,6 +44,18 @@ PYTHONPATH=. python -m src.server.main
 # Open http://localhost:8765
 ```
 
+## Mac Studio / Apple Silicon
+
+faster-whisper doesn't support MPS, so use CPU with int8 quantization (still fast on M-series):
+
+```bash
+# .env
+OPENCLAW_STT_DEVICE=cpu
+OPENCLAW_STT_MODEL=base  # or small for better accuracy
+```
+
+torch/torchaudio will auto-detect MPS for VAD and local TTS models. Only STT needs the CPU override.
+
 ## For OpenClaw Agents (Auto-Install)
 
 One-liner for AI agents to self-install:
