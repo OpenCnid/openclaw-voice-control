@@ -39,7 +39,7 @@ class VoiceActivityDetector:
             import torch
             # Silero VAD requires exactly 512 samples at 16kHz (or 256 at 8kHz)
             chunk_size = 512 if sample_rate == 16000 else 256
-            audio_tensor = torch.from_numpy(audio).float()
+            audio_tensor = torch.from_numpy(audio.copy()).float()
 
             # Process in chunk_size windows, speech if any window triggers
             for i in range(0, len(audio_tensor) - chunk_size + 1, chunk_size):
