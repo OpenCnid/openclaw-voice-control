@@ -49,10 +49,19 @@
             display: flex;
             flex-direction: column;
             flex-shrink: 0;
-            transition: margin-left 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            overflow: hidden;
+            transition: width 0.25s cubic-bezier(0.16, 1, 0.3, 1);
             z-index: 20;
         }
-        .sidebar.collapsed { margin-left: -260px; }
+        .sidebar.collapsed { width: 0; border-right-color: transparent; }
+        /* Keep sidebar content at full width so it slides cleanly off-screen */
+        .sidebar-header, .session-list, .sidebar-footer {
+            min-width: 260px;
+            transition: opacity 0.15s;
+        }
+        .sidebar.collapsed .sidebar-header,
+        .sidebar.collapsed .session-list,
+        .sidebar.collapsed .sidebar-footer { opacity: 0; }
 
         .sidebar-header {
             padding: 12px;
@@ -457,17 +466,27 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            transition: border-color 0.3s, background 0.3s, color 0.3s,
+                        box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+                        transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
             -webkit-tap-highlight-color: transparent;
         }
 
         .orb-btn:hover {
             border-color: #3f3f46;
             color: var(--text-dim);
-            transform: scale(1.03);
+            transform: scale(1.04);
         }
 
-        .orb-btn:active { transform: scale(0.96); }
+        .orb-btn:active { transform: scale(0.94); }
+
+        /* State-change pulse */
+        @keyframes orbPulse {
+            0% { transform: scale(1); }
+            40% { transform: scale(1.12); }
+            100% { transform: scale(1); }
+        }
+        .orb-btn.pulse { animation: orbPulse 0.35s cubic-bezier(0.16, 1, 0.3, 1); }
 
         /* ── State: Listening ── */
         .state-listening .orb-btn {
@@ -920,10 +939,13 @@
             .sidebar {
                 position: fixed;
                 left: 0; top: 0; bottom: 0;
-                margin-left: 0;
+                width: 260px !important;
+                transform: translateX(0);
                 box-shadow: 8px 0 24px rgba(0,0,0,0.4);
+                overflow: visible;
+                transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
             }
-            .sidebar.collapsed { margin-left: -260px; box-shadow: none; }
+            .sidebar.collapsed { transform: translateX(-260px); box-shadow: none; }
             .sidebar-backdrop {
                 position: fixed;
                 inset: 0;
@@ -1155,22 +1177,57 @@
 
         // ── Draw waveform ──
         // Render bars from smoothed array
-        function renderBars(color) {
+        // Smooth color transitions — current render color lerps toward target
+        let waveColorR = 59, waveColorG = 130, waveColorB = 246, waveColorA = 0.7;
+        let waveTargetR = 59, waveTargetG = 130, waveTargetB = 246, waveTargetA = 0.7;
+        let waveGlow = false;
+        const COLOR_LERP = 0.06;
+
+        function setWaveColor(r, g, b, a, glow) {
+            waveTargetR = r; waveTargetG = g; waveTargetB = b; waveTargetA = a;
+            waveGlow = !!glow;
+        }
+
+        function renderBars() {
+            // Lerp color toward target
+            waveColorR += (waveTargetR - waveColorR) * COLOR_LERP;
+            waveColorG += (waveTargetG - waveColorG) * COLOR_LERP;
+            waveColorB += (waveTargetB - waveColorB) * COLOR_LERP;
+            waveColorA += (waveTargetA - waveColorA) * COLOR_LERP;
+
+            const r = Math.round(waveColorR), g = Math.round(waveColorG), b = Math.round(waveColorB);
+            const a = waveColorA.toFixed(2);
+            const color = `rgba(${r},${g},${b},${a})`;
+
             const w = canvas.width / devicePixelRatio;
             const h = canvas.height / devicePixelRatio;
             ctx.clearRect(0, 0, w, h);
 
+            // Soft glow layer behind bars (listening/speaking only)
+            if (waveGlow) {
+                ctx.save();
+                ctx.filter = 'blur(6px)';
+                ctx.globalAlpha = 0.3;
+                drawBarPath(w, h, `rgba(${r},${g},${b},0.5)`);
+                ctx.restore();
+            }
+
+            // Main bars
+            drawBarPath(w, h, color);
+        }
+
+        function drawBarPath(w, h, color) {
             const bars = 48;
             const gap = 2.5;
             const barW = (w - (bars - 1) * gap) / bars;
-            const radius = 1.5;
+            const radius = Math.min(barW / 2, 2);
 
+            ctx.fillStyle = color;
             for (let i = 0; i < bars; i++) {
-                const barH = Math.max(3, waveSmooth[i]);
+                const barH = Math.max(2, waveSmooth[i]);
                 const x = i * (barW + gap);
                 const y = (h - barH) / 2;
 
-                ctx.fillStyle = color;
                 ctx.beginPath();
                 ctx.moveTo(x + radius, y);
                 ctx.lineTo(x + barW - radius, y);
@@ -1206,60 +1263,67 @@
         // 60fps listening loop — lerp toward targets + procedural ripple
         function animateListening() {
             if (uiState !== 'listening') return;
+            setWaveColor(59, 130, 246, 0.75, true); // blue with glow
             const h = canvas.height / devicePixelRatio;
             const t = performance.now() / 1000;
 
             for (let i = 0; i < 48; i++) {
-                // Procedural ripple scaled by current mic energy
                 const ripple = micEnergy * (
                     0.3 * Math.sin(t * 4.5 + i * 0.28)
                   + 0.2 * Math.sin(t * 7.1 + i * 0.45)
                   + 0.15 * Math.sin(t * 11 + i * 0.13)
                 );
-                const target = Math.min(h - 4, barTargets[i] + ripple);
+                const target = Math.min(h - 2, barTargets[i] + ripple);
                 waveSmooth[i] += (target - waveSmooth[i]) * WAVE_LERP;
             }
-            renderBars('rgba(59, 130, 246, 0.7)');
+            renderBars();
             waveAnim = requestAnimationFrame(animateListening);
         }
 
         function animateSpeaking() {
             if (uiState !== 'speaking') return;
+            setWaveColor(16, 185, 129, 0.8, true); // green with glow
             const h = canvas.height / devicePixelRatio;
             const t = performance.now() / 1000;
             for (let i = 0; i < 48; i++) {
                 const target = (0.02 + 0.03 * Math.sin(t * 3 + i * 0.15)
                               + 0.015 * Math.sin(t * 5.7 + i * 0.3)
-                              + 0.01 * Math.random()) * 600;
-                waveSmooth[i] += (Math.min(h - 4, target) - waveSmooth[i]) * 0.12;
+                              + 0.008 * Math.random()) * 600;
+                waveSmooth[i] += (Math.min(h - 2, target) - waveSmooth[i]) * 0.12;
             }
-            renderBars('rgba(16, 185, 129, 0.7)');
+            renderBars();
             waveAnim = requestAnimationFrame(animateSpeaking);
         }
 
         function animateProcessing() {
             if (uiState !== 'processing') return;
+            setWaveColor(245, 158, 11, 0.5, false); // amber, no glow
             const h = canvas.height / devicePixelRatio;
             const t = performance.now() / 1000;
+            // Converging wave: bars pull toward center as "thinking"
+            const center = 24;
             for (let i = 0; i < 48; i++) {
-                const target = (0.008 + 0.012 * Math.sin(t * 2 + i * 0.2)) * 600;
-                waveSmooth[i] += (Math.min(h - 4, target) - waveSmooth[i]) * 0.08;
+                const dist = Math.abs(i - center) / center;
+                const target = (0.005 + 0.02 * (1 - dist) * Math.sin(t * 2.5 + i * 0.15)
+                              + 0.008 * Math.sin(t * 4 + i * 0.3)) * 600;
+                waveSmooth[i] += (Math.min(h - 2, target) - waveSmooth[i]) * 0.08;
             }
-            renderBars('rgba(245, 158, 11, 0.5)');
+            renderBars();
             waveAnim = requestAnimationFrame(animateProcessing);
         }
 
-        // Continuous-idle: very subtle breathing bars to show "I'm alive and ready"
+        // Continuous-idle: subtle breathing bars — AI is alive and ready
         function animateContIdle() {
             if (uiState !== 'cont-idle') return;
+            setWaveColor(59, 130, 246, 0.25, false); // dim blue, no glow
             const h = canvas.height / devicePixelRatio;
             const t = performance.now() / 1000;
             for (let i = 0; i < 48; i++) {
                 const target = (0.004 + 0.006 * Math.sin(t * 1.2 + i * 0.12)
                               + 0.003 * Math.sin(t * 2.1 + i * 0.25)) * 600;
-                waveSmooth[i] += (Math.min(h - 4, target) - waveSmooth[i]) * 0.06;
+                waveSmooth[i] += (Math.min(h - 2, target) - waveSmooth[i]) * 0.06;
             }
-            renderBars('rgba(59, 130, 246, 0.3)');
+            renderBars();
             waveAnim = requestAnimationFrame(animateContIdle);
         }
 
@@ -1297,13 +1361,23 @@
         }
 
         // ── UI State Machine ──
+        let prevState = 'idle';
         function setState(state, label) {
+            const changed = state !== prevState;
+            prevState = state;
             haptic(state === 'listening' ? 20 : state === 'speaking' ? [10, 30, 10] : 0);
             uiState = state;
 
             // Map cont-idle to CSS class
             const cssState = state === 'cont-idle' ? 'cont-idle' : state;
             voiceBar.className = 'voice-bar' + (cssState !== 'idle' ? ` state-${cssState}` : '');
+
+            // Pulse animation on meaningful state transitions
+            if (changed && (state === 'listening' || state === 'speaking' || state === 'processing')) {
+                orbBtn.classList.remove('pulse');
+                void orbBtn.offsetWidth; // force reflow to restart animation
+                orbBtn.classList.add('pulse');
+            }
 
             const icons = { idle: '🎙️', 'cont-idle': '🎙️', listening: '🎙️', processing: '⏳', speaking: '🔊', paused: '⏸️' };
             orbBtn.textContent = icons[state] || '🎙️';
@@ -1639,6 +1713,38 @@
             if (cb) src.onended = cb;
             src.start();
         }
+
+        // ── Pre-warm audio pipeline ──
+        // Request mic + create AudioContext + load worklet on first interaction.
+        // Makes startRec() near-instant — no waiting for permissions or module loading.
+        let preWarmed = false;
+        async function preWarmAudio() {
+            if (preWarmed) return;
+            preWarmed = true;
+            try {
+                if (!mic) mic = await navigator.mediaDevices.getUserMedia({
+                    audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true }
+                });
+                if (!audioCtx || audioCtx.state === 'closed') {
+                    audioCtx = new AudioContext({ sampleRate: 16000 });
+                    await audioCtx.suspend(); // don't consume resources yet
+                }
+                if (!workletReady && audioCtx.audioWorklet) {
+                    try {
+                        await audioCtx.audioWorklet.addModule('/audio-processor.js');
+                        workletReady = true;
+                    } catch(e) { console.warn('Worklet pre-warm failed:', e); }
+                }
+                console.log('Audio pipeline pre-warmed');
+            } catch(e) { console.warn('Pre-warm failed:', e); preWarmed = false; }
+        }
+        // Trigger on first click/touch/keydown anywhere
+        const preWarmEvents = ['click', 'touchstart', 'keydown'];
+        function onFirstInteraction() {
+            preWarmEvents.forEach(e => document.removeEventListener(e, onFirstInteraction));
+            preWarmAudio();
+        }
+        preWarmEvents.forEach(e => document.addEventListener(e, onFirstInteraction, { once: false, passive: true }));
 
         // ── Recording (AudioWorklet) ──
         // AudioWorklet runs audio capture on a dedicated thread — no main-thread glitches.
