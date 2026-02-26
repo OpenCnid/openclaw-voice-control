@@ -12,3 +12,4 @@ build/
 *.log
 .DS_Store
 voice-prompt.txt
+src/client/index.html.bak
