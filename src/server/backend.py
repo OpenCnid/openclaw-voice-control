@@ -26,7 +26,8 @@ class AIBackend:
         self.api_key = api_key
         self.max_tokens = max_tokens
         self.system_prompt = system_prompt  # None = let OpenClaw handle system prompt
-        self.voice_system_hint = (
+        self._voice_hint_sent = False
+        self._voice_hint = (
             "[Voice mode] This conversation is via real-time voice. "
             "Keep responses concise — 2-5 sentences unless more detail is genuinely needed. "
             "No markdown, bullet points, or formatting — everything is spoken aloud. "
@@ -88,6 +89,11 @@ class AIBackend:
     
     async def _chat_openai(self, user_message: str) -> str:
         """Chat via OpenAI API."""
+        # On first message, prepend voice hint to user text
+        if not self._voice_hint_sent and not self.system_prompt:
+            user_message = f"{self._voice_hint}\n\n{user_message}"
+            self._voice_hint_sent = True
+        
         # Add user message to history
         self.conversation_history.append({
             "role": "user",
@@ -98,9 +104,6 @@ class AIBackend:
         messages = []
         if self.system_prompt:
             messages.append({"role": "system", "content": self.system_prompt})
-        else:
-            # Gateway mode: add voice hint as system context
-            messages.append({"role": "system", "content": self.voice_system_hint})
         messages.extend(self.conversation_history[-10:])  # Last 10 turns
         
         try:
@@ -127,6 +130,11 @@ class AIBackend:
     
     async def _chat_openai_stream(self, user_message: str) -> AsyncGenerator[str, None]:
         """Stream chat via OpenAI API."""
+        # On first message, prepend voice hint to user text
+        if not self._voice_hint_sent and not self.system_prompt:
+            user_message = f"{self._voice_hint}\n\n{user_message}"
+            self._voice_hint_sent = True
+        
         # Add user message to history
         self.conversation_history.append({
             "role": "user",
@@ -137,9 +145,6 @@ class AIBackend:
         messages = []
         if self.system_prompt:
             messages.append({"role": "system", "content": self.system_prompt})
-        else:
-            # Gateway mode: add voice hint as system context
-            messages.append({"role": "system", "content": self.voice_system_hint})
         messages.extend(self.conversation_history[-10:])
         
         full_response = ""

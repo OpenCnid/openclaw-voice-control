@@ -77,10 +77,10 @@ class TestAIBackend:
         assert backend.backend_type == "openai"
     
     def test_voice_hint_exists(self):
-        """Test voice system hint is set."""
+        """Test voice hint is set."""
         backend = AIBackend()
-        assert backend.voice_system_hint is not None
-        assert "voice" in backend.voice_system_hint.lower()
+        assert backend._voice_hint is not None
+        assert "voice" in backend._voice_hint.lower()
     
     def test_clear_history(self):
         """Test conversation history can be cleared."""
