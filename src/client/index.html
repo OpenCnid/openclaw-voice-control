@@ -137,6 +137,18 @@
             margin-top: 1px;
         }
 
+        .session-rename-input {
+            width: 100%;
+            background: var(--bg);
+            border: 1px solid var(--blue);
+            color: var(--text);
+            font-size: 0.78rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            outline: none;
+            font-family: inherit;
+        }
+
         .session-delete {
             background: none;
             border: none;
@@ -331,6 +343,49 @@
         .msg-user { align-self: flex-end; }
         .msg-ai { align-self: flex-start; }
 
+        /* ── Message grouping (iMessage-style) ── */
+        .msg.msg-grouped { margin-top: -6px; }
+        .msg.msg-grouped .msg-meta { display: none; }
+        /* User group: first keeps rounded top-right, subsequent get flat top-right */
+        .msg-user.msg-group-start .msg-bubble { border-bottom-right-radius: 6px; }
+        .msg-user.msg-grouped .msg-bubble { border-top-right-radius: 6px; border-bottom-right-radius: 6px; }
+        .msg-user.msg-group-end .msg-bubble { border-top-right-radius: 6px; border-bottom-right-radius: 18px; }
+        .msg-user.msg-group-end .msg-meta { display: flex; }
+        /* AI group */
+        .msg-ai.msg-group-start .msg-bubble { border-bottom-left-radius: 6px; }
+        .msg-ai.msg-grouped .msg-bubble { border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
+        .msg-ai.msg-group-end .msg-bubble { border-top-left-radius: 6px; border-bottom-left-radius: 18px; }
+        .msg-ai.msg-group-end .msg-meta { display: flex; }
+
+        /* ── Typing indicator ── */
+        .typing-indicator {
+            align-self: flex-start;
+            animation: msgIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .typing-bubble {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            border-bottom-left-radius: 6px;
+            padding: 12px 18px;
+            display: flex;
+            gap: 4px;
+            align-items: center;
+        }
+        .typing-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            animation: typingBounce 1.4s ease-in-out infinite;
+        }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes typingBounce {
+            0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+            30% { transform: translateY(-4px); opacity: 1; }
+        }
+
         .msg-bubble {
             padding: 10px 14px;
             border-radius: 18px;
@@ -351,6 +406,42 @@
             color: var(--text);
             border-bottom-left-radius: 6px;
         }
+
+        /* ── Enhanced markdown in bubbles ── */
+        .msg-bubble ul, .msg-bubble ol {
+            margin: 4px 0;
+            padding-left: 1.4em;
+        }
+        .msg-bubble li { margin: 2px 0; }
+        .msg-bubble blockquote {
+            border-left: 3px solid var(--text-muted);
+            margin: 6px 0;
+            padding: 2px 10px;
+            color: var(--text-dim);
+            font-style: italic;
+        }
+        .msg-bubble pre {
+            background: rgba(0,0,0,0.3);
+            border-radius: 8px;
+            padding: 8px 10px;
+            margin: 6px 0;
+            overflow-x: auto;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+            font-size: 0.78em;
+            line-height: 1.5;
+        }
+        .msg-bubble pre code {
+            background: none;
+            padding: 0;
+            font-size: inherit;
+        }
+        .msg-ai .msg-bubble pre { background: rgba(0,0,0,0.25); }
+        /* Syntax token colors */
+        .msg-bubble pre .kw { color: #c084fc; }
+        .msg-bubble pre .str { color: #86efac; }
+        .msg-bubble pre .cm { color: #6b7280; font-style: italic; }
+        .msg-bubble pre .num { color: #fbbf24; }
+        .msg-bubble pre .fn { color: #67e8f9; }
 
         .msg-bubble strong { color: #fff; font-weight: 600; }
         .msg-ai .msg-bubble strong { color: #e4e4e7; }
@@ -1506,11 +1597,17 @@
         }, { passive: true });
         jumpBottom.addEventListener('click', scrollToBottom);
 
+        let lastMsgRole = null; // track for grouping
+
         function addMsg(role, text) {
             hideEmpty();
+            removeTypingIndicator(); // clear typing dots if present
+
+            const roleClass = role === 'user' ? 'user' : 'ai';
             const el = document.createElement('div');
-            el.className = `msg msg-${role === 'user' ? 'user' : 'ai'}`;
+            el.className = `msg msg-${roleClass}`;
             el.setAttribute('data-text', text);
+            el.setAttribute('data-role', role);
             el.innerHTML = `
                 <div class="msg-bubble">${role === 'user' ? esc(text) : md(text)}</div>
                 <div class="msg-meta">
@@ -1525,12 +1622,45 @@
                     setTimeout(() => { e.target.textContent = '📋'; e.target.classList.remove('copied'); }, 1500);
                 });
             });
+
+            // Message grouping: consecutive same-role messages
+            if (lastMsgRole === role) {
+                el.classList.add('msg-grouped');
+                // Mark previous message as group-start if not already grouped
+                const prev = chat.querySelector('.msg:last-child');
+                if (prev && !prev.classList.contains('msg-grouped')) {
+                    prev.classList.add('msg-group-start');
+                }
+                // Current is tentatively group-end (updated if more follow)
+                // Remove group-end from previous grouped message
+                const prevEnd = chat.querySelector('.msg-group-end');
+                if (prevEnd && prevEnd.getAttribute('data-role') === role) prevEnd.classList.remove('msg-group-end');
+                el.classList.add('msg-group-end');
+            }
+            lastMsgRole = role;
+
             chat.appendChild(el);
             maybeScroll();
             return el;
         }
 
+        // ── Typing indicator ──
+        let typingEl = null;
+        function showTypingIndicator() {
+            if (typingEl) return;
+            hideEmpty();
+            typingEl = document.createElement('div');
+            typingEl.className = 'typing-indicator';
+            typingEl.innerHTML = '<div class="typing-bubble"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>';
+            chat.appendChild(typingEl);
+            maybeScroll();
+        }
+        function removeTypingIndicator() {
+            if (typingEl) { typingEl.remove(); typingEl = null; }
+        }
+
         function updateStream(text) {
+            removeTypingIndicator();
             if (!curMsgEl) {
                 curMsgEl = addMsg('ai', text);
                 curMsgEl.classList.add('streaming');
@@ -1550,15 +1680,47 @@
 
         function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
+        function highlightCode(code) {
+            // Lightweight syntax highlighting for common patterns
+            return esc(code)
+                .replace(/\b(const|let|var|function|return|if|else|for|while|import|export|from|class|async|await|try|catch|def|self|print|True|False|None)\b/g, '<span class="kw">$1</span>')
+                .replace(/(["'])(?:(?!\1).)*?\1/g, '<span class="str">$&</span>')
+                .replace(/\/\/.*$/gm, '<span class="cm">$&</span>')
+                .replace(/#.*$/gm, '<span class="cm">$&</span>')
+                .replace(/\b(\d+\.?\d*)\b/g, '<span class="num">$1</span>');
+        }
+
         function md(s) {
-            return s
-                .replace(/```[\s\S]*?```/g, m => `<code>${esc(m.slice(3,-3))}</code>`)
-                .replace(/`([^`]+)`/g, '<code>$1</code>')
-                .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-                .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-                .replace(/^#{1,3}\s+(.+)$/gm, '<strong>$1</strong>')
-                .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
-                .replace(/\n/g, '<br>');
+            // Code blocks with optional language tag and syntax highlighting
+            s = s.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) =>
+                `<pre><code>${highlightCode(code.trim())}</code></pre>`);
+            // Inline code
+            s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+            // Bold / italic
+            s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+            s = s.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+            // Headers
+            s = s.replace(/^#{1,3}\s+(.+)$/gm, '<strong>$1</strong>');
+            // Links
+            s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+            // Blockquotes
+            s = s.replace(/^(?:&gt;|>) (.+)$/gm, '<blockquote>$1</blockquote>');
+            // Unordered lists: consecutive lines starting with - or *
+            s = s.replace(/(?:^|\n)((?:[-*] .+\n?)+)/g, (_, block) => {
+                const items = block.trim().split('\n').map(l => `<li>${l.replace(/^[-*] /, '')}</li>`).join('');
+                return `<ul>${items}</ul>`;
+            });
+            // Ordered lists
+            s = s.replace(/(?:^|\n)((?:\d+\. .+\n?)+)/g, (_, block) => {
+                const items = block.trim().split('\n').map(l => `<li>${l.replace(/^\d+\. /, '')}</li>`).join('');
+                return `<ol>${items}</ol>`;
+            });
+            // Newlines (but not inside pre/ul/ol)
+            s = s.replace(/\n/g, '<br>');
+            // Clean up <br> artifacts next to block elements
+            s = s.replace(/<br>\s*(<\/?(?:ul|ol|li|pre|blockquote)>)/g, '$1');
+            s = s.replace(/(<\/?(?:ul|ol|li|pre|blockquote)>)\s*<br>/g, '$1');
+            return s;
         }
 
         function showToast(msg) {
@@ -1652,6 +1814,7 @@
                     }
                     addMsg('user', m.text);
                     setState('processing');
+                    showTypingIndicator();
                     // Cut off any audio still playing from previous response
                     audioQ = [];
                     if (playing) {
@@ -2134,6 +2297,7 @@
 
             // Set processing state
             setState('processing');
+            showTypingIndicator();
             streamTxt = ''; curMsgEl = null;
         }
 
@@ -2274,6 +2438,7 @@
 
             // Clear chat
             chat.innerHTML = '';
+            lastMsgRole = null;
 
             const msgs = getSessionMsgs(id);
             if (!msgs.length) {
@@ -2349,6 +2514,31 @@
                     <button class="session-delete" title="Delete">🗑</button>`;
 
                 el.querySelector('.session-info').addEventListener('click', () => loadSession(s.id));
+                // Double-click to rename
+                el.querySelector('.session-title').addEventListener('dblclick', e => {
+                    e.stopPropagation();
+                    const titleEl = e.target;
+                    const input = document.createElement('input');
+                    input.className = 'session-rename-input';
+                    input.value = s.title || '';
+                    input.placeholder = 'Rename…';
+                    titleEl.replaceWith(input);
+                    input.focus();
+                    input.select();
+                    const save = () => {
+                        const newTitle = input.value.trim();
+                        if (newTitle) {
+                            s.title = newTitle;
+                            saveSessions(getSessions().map(x => x.id === s.id ? { ...x, title: newTitle } : x));
+                        }
+                        renderSidebar();
+                    };
+                    input.addEventListener('blur', save);
+                    input.addEventListener('keydown', ev => {
+                        if (ev.key === 'Enter') { ev.preventDefault(); save(); }
+                        if (ev.key === 'Escape') { renderSidebar(); }
+                    });
+                });
                 el.querySelector('.session-delete').addEventListener('click', e => {
                     e.stopPropagation();
                     deleteSession(s.id);
