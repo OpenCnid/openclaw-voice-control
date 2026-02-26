@@ -684,6 +684,39 @@
         }
         .state-paused .state-label { color: var(--text-muted); }
 
+        /* ── Mic Level Indicator ── */
+        .mic-level-wrap {
+            width: 100%;
+            max-width: 420px;
+            height: 4px;
+            background: #18181b;
+            border-radius: 2px;
+            overflow: hidden;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .mic-level-wrap.visible { opacity: 1; }
+
+        .mic-level-bar {
+            height: 100%;
+            width: 0%;
+            border-radius: 2px;
+            background: var(--blue);
+            transition: width 0.08s linear, background 0.3s;
+        }
+        .mic-level-bar.hot { background: #ef4444; }
+        .mic-level-bar.warm { background: var(--amber); }
+
+        .mic-level-label {
+            font-size: 0.6rem;
+            color: var(--text-muted);
+            text-align: center;
+            min-height: 14px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .mic-level-label.visible { opacity: 1; }
+
         /* Keyboard hint */
         .kb-hint {
             font-size: 0.65rem;
@@ -909,6 +942,11 @@
 
         <div class="state-label" id="stateLabel">Hold to talk</div>
 
+        <div class="mic-level-wrap" id="micLevelWrap">
+            <div class="mic-level-bar" id="micLevelBar"></div>
+        </div>
+        <div class="mic-level-label" id="micLevelLabel"></div>
+
         <div class="input-row">
             <div class="text-input-wrap">
                 <input type="text" class="text-input" id="textInput" placeholder="Type a message…" autocomplete="off">
@@ -985,6 +1023,9 @@
         const canvas   = $('waveCanvas');
         const ctx      = canvas.getContext('2d');
         const stateLbl = $('stateLabel');
+        const micLevelWrap = $('micLevelWrap');
+        const micLevelBar  = $('micLevelBar');
+        const micLevelLabel = $('micLevelLabel');
 
         // ── Settings (persisted) ──
         const settings = {
@@ -1007,6 +1048,23 @@
         let SILENCE_MS = settings.silence;
         const MIN_DUR = 600, MIN_LEN = 2;
         const RELISTEN_DELAY = 250; // unified fast re-listen delay for continuous mode
+
+        // Screen Wake Lock — keep screen on during active listening/speaking
+        let wakeLock = null;
+        async function requestWakeLock() {
+            if (wakeLock || !('wakeLock' in navigator)) return;
+            try { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); }
+            catch(e) { /* user denied or not supported */ }
+        }
+        function releaseWakeLock() {
+            if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+        }
+
+        // Reconnection state
+        let reconnectAttempts = 0;
+        let reconnectTimer = null;
+        const RECONNECT_BASE_MS = 1000;
+        const RECONNECT_MAX_MS = 30000;
 
         // Streaming
         let audioQ = [], playing = false, curMsgEl = null, streamTxt = '';
@@ -1199,6 +1257,16 @@
             // Waveform visible in active states and cont-idle (subtle breathing), hidden when idle or paused
             waveWrap.classList.toggle('visible', state !== 'idle' && state !== 'paused');
 
+            // Mic level indicator — visible only when listening
+            const showMicLevel = (state === 'listening');
+            micLevelWrap.classList.toggle('visible', showMicLevel);
+            micLevelLabel.classList.toggle('visible', showMicLevel);
+            if (!showMicLevel) { micLevelBar.style.width = '0%'; micLevelLabel.textContent = ''; }
+
+            // Screen wake lock — hold during active states, release when idle
+            if (state === 'listening' || state === 'speaking' || state === 'processing' || state === 'cont-idle') requestWakeLock();
+            else releaseWakeLock();
+
             // Show interrupt indicator on orb during speaking/processing
             orbBtn.classList.toggle('interruptable', state === 'speaking' || state === 'processing');
 
@@ -1290,21 +1358,52 @@
 
         // ── WebSocket ──
         function connect() {
+            if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+
             const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
             const key = new URLSearchParams(location.search).get('api_key') || localStorage.getItem('openclaw_api_key') || '';
             const base = location.pathname.replace(/\/$/, '');
             const path = base ? `${base}/ws` : '/ws';
             const url = key ? `${proto}//${location.host}${path}?api_key=${key}` : `${proto}//${location.host}${path}`;
 
+            dot.className = 'status-dot'; connLbl.textContent = reconnectAttempts ? `Reconnecting (${reconnectAttempts})…` : 'Connecting';
+
             ws = new WebSocket(url);
-            ws.onopen = () => { dot.className = 'status-dot on'; connLbl.textContent = 'Connected'; setState('idle'); };
-            ws.onclose = e => {
-                dot.className = 'status-dot err'; connLbl.textContent = 'Offline';
-                if (e.code >= 4001 && e.code <= 4003) showToast(['','API key required','Invalid key','Rate limited'][e.code-4000]);
-                else setTimeout(connect, 2000);
+            ws.onopen = () => {
+                reconnectAttempts = 0;
+                dot.className = 'status-dot on';
+                connLbl.textContent = 'Connected';
+                // Resume appropriate state based on mode
+                if (continuous && !paused) {
+                    setState('cont-idle');
+                    setTimeout(() => { if (continuous && !paused && !recording) startRec(); }, 600);
+                } else {
+                    setState('idle');
+                }
             };
-            ws.onerror = () => showToast('Connection error');
-            ws.onmessage = e => handle(JSON.parse(e.data));
+            ws.onclose = e => {
+                dot.className = 'status-dot err';
+                // Stop recording cleanly on disconnect
+                if (recording) {
+                    recording = false;
+                    if (audioProc) { audioProc.disconnect(); audioProc = null; }
+                    if (audioSrc) { audioSrc.disconnect(); audioSrc = null; }
+                }
+                if (e.code >= 4001 && e.code <= 4003) {
+                    connLbl.textContent = ['','API key required','Invalid key','Rate limited'][e.code-4000];
+                    showToast(connLbl.textContent);
+                    return; // Don't auto-reconnect on auth errors
+                }
+                reconnectAttempts++;
+                const delay = Math.min(RECONNECT_BASE_MS * Math.pow(1.5, reconnectAttempts - 1), RECONNECT_MAX_MS);
+                connLbl.textContent = `Reconnecting (${reconnectAttempts})…`;
+                reconnectTimer = setTimeout(connect, delay);
+            };
+            ws.onerror = () => {}; // onclose handles reconnection
+            ws.onmessage = e => {
+                try { handle(JSON.parse(e.data)); }
+                catch(err) { console.error('Bad WS message:', err); }
+            };
         }
 
         function handle(m) {
@@ -1378,6 +1477,10 @@
                 case 'audio_response':
                     playLegacy(m.data, m.sample_rate, audioDone);
                     setState('speaking');
+                    break;
+
+                case 'error':
+                    showToast(m.message || 'Server error');
                     break;
 
                 case 'pong': break;
@@ -1474,6 +1577,15 @@
 
                     // Update bar targets (rendered at 60fps by animateListening)
                     updateBarTargets(d);
+
+                    // Update mic level indicator
+                    const pct = Math.min(100, micEnergy * 800);
+                    micLevelBar.style.width = pct + '%';
+                    micLevelBar.classList.toggle('hot', pct > 85);
+                    micLevelBar.classList.toggle('warm', pct > 50 && pct <= 85);
+                    if (pct < 3) micLevelLabel.textContent = 'No input detected';
+                    else if (pct < 15) micLevelLabel.textContent = '';
+                    else micLevelLabel.textContent = '';
 
                     // Silence detect in continuous mode
                     if (continuous) {
@@ -1975,21 +2087,9 @@
         if (continuous) {
             modePush.classList.remove('active');
             modeCont.classList.add('active');
-            updateHints();
-            // Auto-start continuous after connection
-            const origConnect = connect;
-            const waitForWs = setInterval(() => {
-                if (ws && ws.readyState === 1) {
-                    clearInterval(waitForWs);
-                    setState('cont-idle');
-                    setTimeout(() => {
-                        if (continuous && !recording) startRec();
-                    }, 600);
-                }
-            }, 200);
-        } else {
-            updateHints();
         }
+        updateHints();
+        // connect() handles continuous mode auto-start via onopen
         connect();
         setInterval(() => { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'ping' })); }, 30000);
     })();

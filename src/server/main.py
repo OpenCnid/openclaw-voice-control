@@ -338,80 +338,104 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             data = await websocket.receive_text()
-            msg = json.loads(data)
             
-            if msg["type"] == "start_listening":
-                is_listening = True
-                audio_buffer = []
-                await websocket.send_json({"type": "listening_started"})
-                logger.debug("Started listening")
-                
-            elif msg["type"] == "stop_listening":
-                is_listening = False
-                
-                if audio_buffer:
-                    # Combine audio chunks
-                    audio_data = np.concatenate(audio_buffer)
-                    
-                    # Transcribe
-                    logger.debug("Transcribing audio...")
-                    transcript = await stt.transcribe(audio_data)
-                    
-                    await websocket.send_json({
-                        "type": "transcript",
-                        "text": transcript,
-                        "final": True,
-                    })
-                    logger.info(f"Transcript: {transcript}")
-                    
-                    if transcript.strip() and len(transcript.strip()) >= 2:
-                        await stream_ai_response(transcript)
-                
-                audio_buffer = []
-                await websocket.send_json({"type": "listening_stopped"})
-                logger.debug("Stopped listening")
+            try:
+                msg = json.loads(data)
+            except json.JSONDecodeError:
+                logger.warning(f"Invalid JSON from client: {data[:100]}")
+                continue
             
-            elif msg["type"] == "text_message":
-                # Text input from the UI — skip STT, go straight to AI
-                user_text = (msg.get("text") or "").strip()
-                if user_text:
-                    logger.info(f"Text message: {user_text}")
-                    await stream_ai_response(user_text)
+            msg_type = msg.get("type")
+            if not msg_type:
+                logger.warning(f"Message missing 'type': {str(msg)[:100]}")
+                continue
+            
+            try:
+                if msg_type == "start_listening":
+                    is_listening = True
+                    audio_buffer = []
+                    await websocket.send_json({"type": "listening_started"})
+                    logger.debug("Started listening")
+                    
+                elif msg_type == "stop_listening":
+                    is_listening = False
+                    
+                    if audio_buffer:
+                        # Combine audio chunks
+                        audio_data = np.concatenate(audio_buffer)
+                        
+                        # Transcribe
+                        logger.debug("Transcribing audio...")
+                        transcript = await stt.transcribe(audio_data)
+                        
+                        await websocket.send_json({
+                            "type": "transcript",
+                            "text": transcript,
+                            "final": True,
+                        })
+                        logger.info(f"Transcript: {transcript}")
+                        
+                        if transcript.strip() and len(transcript.strip()) >= 2:
+                            await stream_ai_response(transcript)
+                    
+                    audio_buffer = []
+                    await websocket.send_json({"type": "listening_stopped"})
+                    logger.debug("Stopped listening")
                 
-            elif msg["type"] == "new_session":
-                # Clear conversation history for a fresh start
-                if backend:
-                    backend.clear_history()
-                logger.info("Session reset by client")
+                elif msg_type == "text_message":
+                    # Text input from the UI — skip STT, go straight to AI
+                    user_text = (msg.get("text") or "").strip()
+                    if user_text:
+                        logger.info(f"Text message: {user_text}")
+                        await stream_ai_response(user_text)
+                    
+                elif msg_type == "new_session":
+                    # Clear conversation history for a fresh start
+                    if backend:
+                        backend.clear_history()
+                    logger.info("Session reset by client")
+                    
+                elif msg_type == "cancel_listening":
+                    # Client detected noise/too-short — discard without processing
+                    is_listening = False
+                    audio_buffer = []
+                    logger.debug("Listening cancelled (noise/too short)")
+                    
+                elif msg_type == "audio" and is_listening:
+                    # Decode base64 audio
+                    audio_bytes = base64.b64decode(msg.get("data", ""))
+                    audio_np = np.frombuffer(audio_bytes, dtype=np.float32)
+                    audio_buffer.append(audio_np)
+                    
+                    # VAD check - notify client if speech detected
+                    if vad and len(audio_np) > 0:
+                        has_speech = vad.is_speech(audio_np)
+                        await websocket.send_json({
+                            "type": "vad_status",
+                            "speech_detected": has_speech,
+                        })
+                    
+                elif msg_type == "ping":
+                    await websocket.send_json({"type": "pong"})
                 
-            elif msg["type"] == "cancel_listening":
-                # Client detected noise/too-short — discard without processing
-                is_listening = False
-                audio_buffer = []
-                logger.debug("Listening cancelled (noise/too short)")
-                
-            elif msg["type"] == "audio" and is_listening:
-                # Decode base64 audio
-                audio_bytes = base64.b64decode(msg["data"])
-                audio_np = np.frombuffer(audio_bytes, dtype=np.float32)
-                audio_buffer.append(audio_np)
-                
-                # VAD check - notify client if speech detected
-                if vad and len(audio_np) > 0:
-                    has_speech = vad.is_speech(audio_np)
-                    await websocket.send_json({
-                        "type": "vad_status",
-                        "speech_detected": has_speech,
-                    })
-                
-            elif msg["type"] == "ping":
-                await websocket.send_json({"type": "pong"})
+                else:
+                    logger.debug(f"Unknown message type: {msg_type}")
+                    
+            except Exception as e:
+                logger.error(f"Error handling '{msg_type}': {e}", exc_info=True)
+                await websocket.send_json({
+                    "type": "error",
+                    "message": f"Server error processing {msg_type}",
+                })
                 
     except WebSocketDisconnect:
         logger.info("Client disconnected")
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
-        await websocket.close()
+        try:
+            await websocket.close()
+        except Exception:
+            pass
 
 
 # Serve static files for client
