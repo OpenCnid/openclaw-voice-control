@@ -280,6 +280,9 @@ async def websocket_endpoint(websocket: WebSocket):
     audio_buffer = []
     is_listening = False
     session_start = None
+    partial_task = None
+    last_partial_samples = 0  # track how much audio we've partially transcribed
+    PARTIAL_INTERVAL_SAMPLES = 16000 * 3  # partial transcription every 3 seconds of new audio
     
     async def stream_ai_response(user_text: str):
         """Stream AI response with progressive TTS for a given user message."""
@@ -365,6 +368,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 if msg_type == "start_listening":
                     is_listening = True
                     audio_buffer = []
+                    last_partial_samples = 0
+                    partial_task = None
                     await websocket.send_json({"type": "listening_started"})
                     logger.debug("Started listening")
                     
@@ -451,6 +456,24 @@ async def websocket_endpoint(websocket: WebSocket):
                             "type": "vad_status",
                             "speech_detected": has_speech,
                         })
+                    
+                    # Partial transcription — show live text while user speaks
+                    total_samples = sum(len(c) for c in audio_buffer)
+                    if (total_samples - last_partial_samples >= PARTIAL_INTERVAL_SAMPLES
+                            and (partial_task is None or partial_task.done())):
+                        last_partial_samples = total_samples
+                        async def do_partial():
+                            try:
+                                audio_snapshot = np.concatenate(audio_buffer)
+                                partial_text = await stt.transcribe(audio_snapshot)
+                                if partial_text and partial_text.strip():
+                                    await websocket.send_json({
+                                        "type": "partial_transcript",
+                                        "text": partial_text.strip(),
+                                    })
+                            except Exception as e:
+                                logger.debug(f"Partial transcription failed: {e}")
+                        partial_task = asyncio.create_task(do_partial())
                     
                 elif msg_type == "ping":
                     await websocket.send_json({"type": "pong"})

@@ -273,12 +273,13 @@
 
         /* ─── Chat ─── */
         .chat {
-            flex: 1;
+            position: absolute;
+            inset: 0;
             overflow-y: auto;
-            padding: 20px 16px 12px;
+            padding: 16px 16px 12px;
             display: flex;
             flex-direction: column;
-            gap: 12px;
+            gap: 10px;
             overscroll-behavior: contain;
         }
 
@@ -376,23 +377,23 @@
         .msg-copy:hover { color: var(--text-dim); }
         .msg-copy.copied { color: var(--green); }
 
-        /* ─── Voice Bar ─── */
+        /* ─── Voice Bar (compact) ─── */
         .voice-bar {
             flex-shrink: 0;
             background: var(--surface);
             border-top: 1px solid var(--border);
-            padding: 16px 16px 12px;
+            padding: 10px 16px 8px;
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 14px;
+            gap: 8px;
         }
 
         /* Canvas waveform */
         .waveform-wrap {
             width: 100%;
             max-width: 420px;
-            height: 40px;
+            height: 28px;
             opacity: 0;
             transition: opacity 0.3s ease;
         }
@@ -404,11 +405,29 @@
             display: block;
         }
 
-        /* Orb button */
+        /* Live transcript preview */
+        .live-transcript {
+            width: 100%;
+            max-width: 560px;
+            min-height: 0;
+            max-height: 48px;
+            overflow: hidden;
+            text-align: center;
+            font-size: 0.8rem;
+            color: var(--text-dim);
+            font-style: italic;
+            opacity: 0;
+            transition: opacity 0.2s, max-height 0.3s;
+            line-height: 1.4;
+        }
+        .live-transcript.visible { opacity: 1; max-height: 48px; }
+        .live-transcript:empty { max-height: 0; }
+
+        /* Orb button — smaller for more chat space */
         .orb-wrap {
             position: relative;
-            width: 72px;
-            height: 72px;
+            width: 56px;
+            height: 56px;
         }
 
         /* Pulse rings */
@@ -425,13 +444,13 @@
         }
 
         .orb-btn {
-            width: 72px;
-            height: 72px;
+            width: 56px;
+            height: 56px;
             border-radius: 50%;
             border: 2px solid #27272a;
             background: var(--bg);
             color: var(--text-muted);
-            font-size: 1.5rem;
+            font-size: 1.2rem;
             cursor: pointer;
             position: relative;
             z-index: 2;
@@ -684,6 +703,45 @@
         }
         .state-paused .state-label { color: var(--text-muted); }
 
+        /* ── Jump to Bottom ── */
+        .jump-bottom {
+            position: absolute;
+            bottom: 8px;
+            left: 50%;
+            transform: translateX(-50%) translateY(10px);
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            padding: 4px 14px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            cursor: pointer;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            z-index: 5;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        .jump-bottom.visible {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateX(-50%) translateY(0);
+        }
+        .jump-bottom:hover { border-color: var(--blue); color: var(--text); }
+
+        /* ── Chat wrapper (relative for jump button) ── */
+        .chat-wrap {
+            flex: 1;
+            position: relative;
+            min-height: 0;
+        }
+
+        /* ── Silence Pre-indicator ── */
+        .state-listening .waveform-wrap.silence-detected {
+            opacity: 0.4;
+            transition: opacity 0.3s;
+        }
+
         /* ── Mic Level Indicator ── */
         .mic-level-wrap {
             width: 100%;
@@ -875,8 +933,8 @@
             }
             .sidebar-backdrop.show { display: block; }
             .msg { max-width: 88%; }
-            .orb-btn { width: 80px; height: 80px; font-size: 1.7rem; }
-            .orb-wrap { width: 80px; height: 80px; }
+            .orb-btn { width: 64px; height: 64px; font-size: 1.4rem; }
+            .orb-wrap { width: 64px; height: 64px; }
             .chat { padding: 16px 12px; }
         }
         @media (min-width: 769px) {
@@ -919,12 +977,15 @@
         </div>
     </div>
 
-    <div class="chat" id="chat">
-        <div class="empty" id="empty">
-            <div class="empty-icon">👋</div>
-            <p id="emptyText">Ready when you are</p>
-            <p class="empty-sub" id="emptySub">Just start talking, or type below</p>
+    <div class="chat-wrap">
+        <div class="chat" id="chat">
+            <div class="empty" id="empty">
+                <div class="empty-icon">👋</div>
+                <p id="emptyText">Ready when you are</p>
+                <p class="empty-sub" id="emptySub">Just start talking, or type below</p>
+            </div>
         </div>
+        <button class="jump-bottom" id="jumpBottom">↓ New messages</button>
     </div>
 
     <div class="toast" id="toast"></div>
@@ -939,6 +1000,8 @@
             <div class="orb-ring"></div>
             <button class="orb-btn" id="orbBtn">🎙️</button>
         </div>
+
+        <div class="live-transcript" id="liveTranscript"></div>
 
         <div class="state-label" id="stateLabel">Hold to talk</div>
 
@@ -1026,6 +1089,8 @@
         const micLevelWrap = $('micLevelWrap');
         const micLevelBar  = $('micLevelBar');
         const micLevelLabel = $('micLevelLabel');
+        const liveTranscript = $('liveTranscript');
+        const jumpBottom = $('jumpBottom');
 
         // ── Settings (persisted) ──
         const settings = {
@@ -1307,6 +1372,19 @@
 
         function hideEmpty() { if (empty) empty.style.display = 'none'; }
 
+        // ── Smart auto-scroll ──
+        // Auto-scroll when near bottom; stop when user scrolls up to review history.
+        let userScrolledUp = false;
+        function isNearBottom() { return chat.scrollHeight - chat.scrollTop - chat.clientHeight < 80; }
+        function scrollToBottom() { chat.scrollTop = chat.scrollHeight; userScrolledUp = false; jumpBottom.classList.remove('visible'); }
+        function maybeScroll() { if (!userScrolledUp) scrollToBottom(); else jumpBottom.classList.add('visible'); }
+
+        chat.addEventListener('scroll', () => {
+            if (isNearBottom()) { userScrolledUp = false; jumpBottom.classList.remove('visible'); }
+            else { userScrolledUp = true; }
+        }, { passive: true });
+        jumpBottom.addEventListener('click', scrollToBottom);
+
         function addMsg(role, text) {
             hideEmpty();
             const el = document.createElement('div');
@@ -1327,7 +1405,7 @@
                 });
             });
             chat.appendChild(el);
-            chat.scrollTop = chat.scrollHeight;
+            maybeScroll();
             return el;
         }
 
@@ -1335,7 +1413,7 @@
             if (!curMsgEl) curMsgEl = addMsg('ai', text);
             else {
                 curMsgEl.querySelector('.msg-bubble').innerHTML = md(text);
-                chat.scrollTop = chat.scrollHeight;
+                maybeScroll();
             }
         }
 
@@ -1421,7 +1499,18 @@
                     setState('processing');
                     break;
 
+                case 'partial_transcript':
+                    // Live preview of what the user is saying
+                    if (m.text && m.text.trim()) {
+                        liveTranscript.textContent = m.text.trim();
+                        liveTranscript.classList.add('visible');
+                    }
+                    break;
+
                 case 'transcript':
+                    // Clear live transcript when final arrives
+                    liveTranscript.textContent = '';
+                    liveTranscript.classList.remove('visible');
                     if (!m.text || m.text.trim().length < MIN_LEN) {
                         if (continuous) {
                             if (paused) { setState('paused'); break; }
@@ -1582,10 +1671,21 @@
             if (pct < 3) micLevelLabel.textContent = 'No input detected';
             else micLevelLabel.textContent = '';
 
-            // Silence detect in continuous mode
+            // Silence detect in continuous mode (adaptive threshold)
             if (continuous) {
-                if ((msg.energy || 0) > 0.01) lastSound = Date.now();
-                else if (speechDetected && Date.now() - lastSound > SILENCE_MS) stopRec();
+                const energy = msg.energy || 0;
+                if (energy > 0.005) { // lower threshold — catches "umm", quiet speech
+                    lastSound = Date.now();
+                    waveWrap.classList.remove('silence-detected');
+                } else if (speechDetected) {
+                    const silenceMs = Date.now() - lastSound;
+                    // Adaptive: longer speech = more pause tolerance (up to 2x)
+                    const speechDur = Date.now() - recStart;
+                    const adaptiveSilence = Math.min(SILENCE_MS + (speechDur / 5000) * 1000, SILENCE_MS * 2);
+                    // Show "finishing..." hint after 40% of threshold
+                    if (silenceMs > adaptiveSilence * 0.4) waveWrap.classList.add('silence-detected');
+                    if (silenceMs > adaptiveSilence) stopRec();
+                }
             }
         }
 
@@ -1608,8 +1708,14 @@
                 if (pct < 3) micLevelLabel.textContent = 'No input detected';
                 else micLevelLabel.textContent = '';
                 if (continuous) {
-                    if (energy > 0.01) lastSound = Date.now();
-                    else if (speechDetected && Date.now() - lastSound > SILENCE_MS) stopRec();
+                    if (energy > 0.005) { lastSound = Date.now(); waveWrap.classList.remove('silence-detected'); }
+                    else if (speechDetected) {
+                        const silenceMs = Date.now() - lastSound;
+                        const speechDur = Date.now() - recStart;
+                        const adaptiveSilence = Math.min(SILENCE_MS + (speechDur / 5000) * 1000, SILENCE_MS * 2);
+                        if (silenceMs > adaptiveSilence * 0.4) waveWrap.classList.add('silence-detected');
+                        if (silenceMs > adaptiveSilence) stopRec();
+                    }
                 }
             };
             return proc;
@@ -1681,6 +1787,8 @@
                 }
 
                 recording = true; speechDetected = false; recStart = Date.now();
+                liveTranscript.textContent = ''; liveTranscript.classList.remove('visible');
+                waveWrap.classList.remove('silence-detected');
                 setState('listening');
                 ws.send(JSON.stringify({ type: 'start_listening' }));
             } catch(err) { showToast('Mic error: ' + err.message); }
